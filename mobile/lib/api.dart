@@ -87,7 +87,7 @@ class ApiClient {
       _uri('/api/auth/login'),
       headers: _headers,
       body: jsonEncode({'username': username, 'password': password}),
-    ).timeout(const Duration(seconds: 15));
+    ).timeout(const Duration(seconds: 60));
     _check(resp);
     final body = _decode(resp) as Map<String, dynamic>;
     _token = body['access_token'] as String;
@@ -96,7 +96,7 @@ class ApiClient {
   }
 
   Future<VaultUser> me() async {
-    final resp = await http.get(_uri('/api/auth/me'), headers: _headers).timeout(const Duration(seconds: 15));
+    final resp = await http.get(_uri('/api/auth/me'), headers: _headers).timeout(const Duration(seconds: 60));
     _check(resp);
     user = VaultUser.fromJson(_decode(resp) as Map<String, dynamic>);
     return user!;
@@ -108,14 +108,14 @@ class ApiClient {
       if (category.isNotEmpty) 'category': category,
     };
     final uri = _uri('/api/entries').replace(queryParameters: params.isEmpty ? null : params);
-    final resp = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 20));
+    final resp = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 60));
     _check(resp);
     final list = _decode(resp) as List<dynamic>;
     return list.map((e) => VaultEntry.fromSummary(e as Map<String, dynamic>)).toList();
   }
 
   Future<VaultEntry> getEntry(int id) async {
-    final resp = await http.get(_uri('/api/entries/$id'), headers: _headers).timeout(const Duration(seconds: 20));
+    final resp = await http.get(_uri('/api/entries/$id'), headers: _headers).timeout(const Duration(seconds: 60));
     _check(resp);
     return VaultEntry.fromDetail(_decode(resp) as Map<String, dynamic>);
   }

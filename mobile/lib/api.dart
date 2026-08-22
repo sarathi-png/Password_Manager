@@ -19,14 +19,16 @@ class ApiClient {
   static const _storage = FlutterSecureStorage();
   static const _tokenKey = 'vault_token';
   static const _serverKey = 'vault_server';
+  static const String defaultServer = 'https://vault-lcgd.onrender.com';
 
-  String baseUrl = '';
+  String baseUrl = defaultServer;
   String? _token;
   VaultUser? user;
 
   Future<void> loadSession() async {
     final prefs = await SharedPreferences.getInstance();
-    baseUrl = prefs.getString(_serverKey) ?? '';
+    final saved = prefs.getString(_serverKey);
+    baseUrl = (saved == null || saved.isEmpty) ? defaultServer : saved;
     _token = await _storage.read(key: _tokenKey);
   }
 

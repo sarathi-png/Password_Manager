@@ -22,22 +22,14 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
-  final _serverCtrl = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    _serverCtrl.text = widget.api.baseUrl;
-  }
-
-  @override
   void dispose() {
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
-    _serverCtrl.dispose();
     super.dispose();
   }
 
@@ -48,9 +40,8 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      widget.api.baseUrl = _serverCtrl.text.trim();
       final user = await widget.api.login(_usernameCtrl.text.trim(), _passwordCtrl.text);
-      await widget.api.saveSession(_serverCtrl.text.trim());
+      await widget.api.saveSession(widget.api.baseUrl);
       widget.onLoggedIn(user);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -148,16 +139,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _serverCtrl,
-                        keyboardType: TextInputType.url,
-                        decoration: const InputDecoration(
-                          labelText: 'Server address',
-                          hintText: 'https://vault.example.com',
-                          prefixIcon: Icon(Icons.dns_outlined),
-                        ),
                       ),
                       const SizedBox(height: 24),
                       FilledButton(

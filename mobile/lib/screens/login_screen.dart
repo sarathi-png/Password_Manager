@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -50,8 +53,14 @@ class _LoginScreenState extends State<LoginScreen> {
       widget.onLoggedIn(user);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
-    } catch (_) {
-      setState(() => _error = 'Cannot reach server — check the address and your connection.');
+    } on SocketException {
+      setState(() => _error = 'Connection refused — is the server running?');
+    } on TimeoutException {
+      setState(() => _error = 'Server took too long to respond — try again.');
+    } on HandshakeException {
+      setState(() => _error = 'SSL certificate error — check the server address.');
+    } catch (e) {
+      setState(() => _error = 'Cannot reach server — ${e.runtimeType}: ${e.toString().length > 120 ? e.toString().substring(0, 120) : e}');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

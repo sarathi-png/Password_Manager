@@ -48,6 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
+      widget.api.baseUrl = _serverCtrl.text.trim();
       final user = await widget.api.login(_usernameCtrl.text.trim(), _passwordCtrl.text);
       await widget.api.saveSession(_serverCtrl.text.trim());
       widget.onLoggedIn(user);

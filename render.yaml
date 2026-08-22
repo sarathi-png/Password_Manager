@@ -2,12 +2,10 @@ services:
   - type: web
     name: vault
     runtime: docker
-    plan: starter
+    plan: free
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: vault-db
-          property: connectionString
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: VAULT_MASTER_KEY
@@ -20,9 +18,3 @@ services:
         value: "*"
       - key: ENVIRONMENT
         value: production
-
-databases:
-  - name: vault-db
-    plan: basic-256mb
-    databaseName: vault
-    user: vault

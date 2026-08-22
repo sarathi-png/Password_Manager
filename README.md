@@ -67,14 +67,28 @@ cd backend && .venv\Scripts\python -m pytest tests -q     # 47 tests
 cd mobile && flutter analyze && flutter test
 ```
 
-## Deploy (Render)
+## Deploy (Free: Render web + Neon Postgres)
 
-1. Push this repo to GitHub
-2. New Blueprint → import repo → uses `render.yaml` (web service + Postgres)
-3. `VAULT_MASTER_KEY` and `JWT_SECRET` are generated automatically; copy them somewhere safe
-4. First login: `admin` / `INITIAL_ADMIN_PASSWORD` (visible in Render env vars once)
+**Total cost: $0/month.** Render free web service spins down after 15 min idle (wakes ~30s); Neon free Postgres suspends after 5 min idle (wakes ~2s).
 
-Or any Docker host: `docker build -t vault . && docker run -p 8000:8000 -e DATABASE_URL=... -e JWT_SECRET=... -e VAULT_MASTER_KEY=... vault`
+1. **Neon** → sign up (GitHub) → **Create project** → copy the *pooled* connection string  
+   Format: `postgresql://user:pass@ep-xxx.neon.tech/vault?sslmode=require`
+2. **Render** → **New → Blueprint** → select this repo → it reads `render.yaml` (free web service only)  
+   When prompted for `DATABASE_URL`, paste the Neon string → **Apply**
+3. Render builds the Docker image and deploys to `https://vault-xxxx.onrender.com`
+4. Open the URL → login `admin` / `INITIAL_ADMIN_PASSWORD` (shown in Render → Environment tab, auto-generated) → **change immediately**
+5. Admin console → **Users** → create employee accounts → employees log in on mobile with your Render URL
+
+**Local Docker (any host):**
+```bash
+docker build -t vault .
+docker run -p 8000:8000 \
+  -e DATABASE_URL="postgresql+psycopg://user:pass@host:5432/vault" \
+  -e JWT_SECRET="..." \
+  -e VAULT_MASTER_KEY="..." \
+  -e INITIAL_ADMIN_PASSWORD="..." \
+  vault
+```
 
 ## Security notes
 

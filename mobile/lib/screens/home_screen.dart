@@ -28,6 +28,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showFav = false;
   bool _showPinned = false;
   String _sort = 'title'; // title | recent | favorite
+  bool _grouped = true;
+  List<Map<String, dynamic>> _groups = [];
   Timer? _debounce;
 
   @override
@@ -59,9 +61,18 @@ class _HomeScreenState extends State<HomeScreen> {
         isPinned: _showPinned ? true : null,
         sort: _sort,
       );
+      List<Map<String, dynamic>> groups = [];
+      if (_grouped) {
+        try {
+          groups = await widget.api.listGroups(query: _searchCtrl.text.trim());
+        } catch (_) {
+          groups = [];
+        }
+      }
       if (!mounted) return;
       setState(() {
         _entries = entries;
+        _groups = groups;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -105,6 +116,106 @@ class _HomeScreenState extends State<HomeScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _openGroup(String domain) async {
+    try {
+      final entries = await widget.api.listEntries(query: domain);
+      // filter client-side to just this domain's registrable
+      final filtered = entries.where((e) => (e.registrableDomain == domain) || e.host.contains(domain)).toList();
+      if (!mounted) return;
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => Container(
+          decoration: const BoxDecoration(color: AppColors.surface1, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          padding: const EdgeInsets.all(16),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(4))),
+                const SizedBox(height: 12),
+                Text(domain, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text('${filtered.length} entries', style: GoogleFonts.inter(fontSize: 12, color: AppColors.text3)),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) => ListTile(
+                      title: Text(filtered[i].title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
+                      subtitle: Text(filtered[i].host, style: GoogleFonts.inter(fontSize: 12, color: AppColors.text3)),
+                      trailing: const Icon(Icons.chevron_right, size: 18),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openEntry(filtered[i]);
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load group: $e')));
+    }
+  }
+
+  Future<void> _promptGroupCategory(Map<String, dynamic> group) async {
+    final domain = group['registrable_domain'] as String;
+    // simple prompt: choose global vs my
+    final isAdmin = widget.api.user?.role == 'admin';
+    final cats = await widget.api.listCategories();
+    // flatten
+    final flat = <Map<String, dynamic>>[];
+    for (final c in cats) {
+      flat.add(c);
+      final children = c['children'] as List? ?? [];
+      for (final ch in children) flat.add(ch as Map<String, dynamic>);
+    }
+    if (!mounted) return;
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.overlay,
+        title: Text('Set category for $domain', style: GoogleFonts.inter(fontSize: 14)),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: ListView(
+            children: flat.map((c) => ListTile(
+              title: Text(c['name'] as String),
+              subtitle: c['parent_id'] != null ? const Text('subcategory', style: TextStyle(fontSize: 11)) : null,
+              onTap: () => Navigator.pop(ctx, c['id'] as int),
+            )).toList(),
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel'))],
+      ),
+    );
+    if (selected == null) return;
+    try {
+      final ids = (group['entry_ids'] as List).cast<int>();
+      if (isAdmin) {
+        for (final id in ids) {
+          await widget.api.setGlobalCategory(id, selected);
+        }
+      } else {
+        for (final id in ids) {
+          await widget.api.setMyCategory(id, selected);
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isAdmin ? 'Global category updated' : 'My category saved (private)')));
+      _load();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
@@ -225,6 +336,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                child: Row(
+                  children: [
+                    const Icon(Icons.folder_special_rounded, size: 16, color: AppColors.text3),
+                    const SizedBox(width: 6),
+                    Text('Grouped by host', style: GoogleFonts.inter(fontSize: 12.5, color: AppColors.text3)),
+                    const Spacer(),
+                    Switch(value: _grouped, onChanged: (v) { setState(() => _grouped = v); _load(); }, materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                  ],
+                ),
+              ),
               SizedBox(
                 height: 40,
                 child: ListView(
@@ -272,6 +395,43 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
+        ),
+      );
+    }
+    if (_grouped) {
+      if (_groups.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.folder_off_rounded, size: 44, color: AppColors.text3),
+              const SizedBox(height: 12),
+              Text('No groups', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 4),
+              Text('Try different search or switch to flat', style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        );
+      }
+      return RefreshIndicator(
+        onRefresh: _load,
+        color: AppColors.accent2,
+        backgroundColor: AppColors.surface2,
+        child: ListView.separated(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          itemCount: _groups.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final g = _groups[index];
+            return _GroupCard(
+              domain: g['registrable_domain'] as String? ?? '',
+              count: g['count'] as int? ?? 0,
+              category: g['effective_category'] as String? ?? 'Other',
+              exactHosts: (g['exact_hosts'] as List?)?.map((e) => e.toString()).toList() ?? [],
+              onTap: () => _openGroup(g['registrable_domain'] as String),
+              onSetCategory: () => _promptGroupCategory(g),
+            );
+          },
         ),
       );
     }
@@ -467,6 +627,50 @@ class _EntryCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 4),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.text3, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupCard extends StatelessWidget {
+  final String domain;
+  final int count;
+  final String category;
+  final List<String> exactHosts;
+  final VoidCallback onTap;
+  final VoidCallback onSetCategory;
+  const _GroupCard({required this.domain, required this.count, required this.category, required this.exactHosts, required this.onTap, required this.onSetCategory});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = categoryColor(category);
+    return Material(
+      color: AppColors.surface1,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
+          child: Row(
+            children: [
+              Container(width: 44, height: 44, decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12), border: Border.all(color: accent.withValues(alpha: 0.3))), alignment: Alignment.center, child: Icon(Icons.folder_special_rounded, color: accent, size: 22)),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [Expanded(child: Text(domain, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.text1))), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)), child: Text('$count', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: accent)))]),
+                  const SizedBox(height: 3),
+                  Text(exactHosts.take(2).join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12, color: AppColors.text3)),
+                  const SizedBox(height: 3),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)), child: Text(category, style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: accent, letterSpacing: 0.4))),
+                ]),
+              ),
+              IconButton(icon: const Icon(Icons.edit_outlined, size: 18, color: AppColors.text3), onPressed: onSetCategory, tooltip: 'Set category'),
               const Icon(Icons.chevron_right_rounded, color: AppColors.text3, size: 20),
             ],
           ),

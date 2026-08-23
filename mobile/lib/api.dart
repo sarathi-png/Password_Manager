@@ -168,4 +168,40 @@ class ApiClient {
     final list = _decode(resp) as List<dynamic>;
     return list.map((e) => e as Map<String, dynamic>).toList();
   }
+
+  Future<List<Map<String, dynamic>>> listGroups({String query = '', int? districtId, int? blockId}) async {
+    final params = <String, String>{
+      if (query.isNotEmpty) 'q': query,
+      if (districtId != null) 'district_id': districtId.toString(),
+      if (blockId != null) 'block_id': blockId.toString(),
+    };
+    final uri = _uri('/api/entries/groups').replace(queryParameters: params.isEmpty ? null : params);
+    final resp = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 60));
+    _check(resp);
+    final list = _decode(resp) as List<dynamic>;
+    return list.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> listCategories() async {
+    final resp = await http.get(_uri('/api/categories'), headers: _headers).timeout(const Duration(seconds: 60));
+    _check(resp);
+    final list = _decode(resp) as List<dynamic>;
+    return list.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<Map<String, dynamic>> setGlobalCategory(int entryId, int categoryId, {int? subcategoryId}) async {
+    final body = <String, dynamic>{'category_id': categoryId};
+    if (subcategoryId != null) body['subcategory_id'] = subcategoryId;
+    final resp = await http.put(_uri('/api/entries/$entryId/category'), headers: _headers, body: jsonEncode(body)).timeout(const Duration(seconds: 60));
+    _check(resp);
+    return _decode(resp) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> setMyCategory(int entryId, int categoryId, {int? subcategoryId}) async {
+    final body = <String, dynamic>{'category_id': categoryId};
+    if (subcategoryId != null) body['subcategory_id'] = subcategoryId;
+    final resp = await http.put(_uri('/api/entries/$entryId/my-category'), headers: _headers, body: jsonEncode(body)).timeout(const Duration(seconds: 60));
+    _check(resp);
+    return _decode(resp) as Map<String, dynamic>;
+  }
 }

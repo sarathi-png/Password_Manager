@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     rate_limit_login_per_minute: int = 10
     rate_limit_api_per_minute: int = 300
     max_import_rows: int = 50000
+    opencode_api_key: str = ""
+    opencode_api_base: str = "https://api.openai.com/v1"
 
     @property
     def cors_origin_list(self) -> list[str]:

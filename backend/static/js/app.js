@@ -8,6 +8,9 @@ const state = {
   audit: [],
   districts: [],
   blocks: [],
+  categories: [],
+  grouped: true,
+  groups: [],
   selectedIds: new Set(),
   filters: { q: "", category: "", district_id: "", block_id: "", is_duplicate: "", tag: "", is_favorite: false, sort: "title" },
   searchTimer: null,
@@ -351,12 +354,14 @@ function renderVault() {
       <button class="btn btn-ghost" id="bulk-clear">Clear</button>
     </div>
 
+    <div style="display:flex;gap:10px;margin-bottom:12px"><label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="grouped-toggle" ${state.grouped?"checked":""}/> Grouped by host (collapse duplicates)</label><span style="font-size:12px;color:var(--text-3)">registrable domain merges subdomains — admin can Split</span></div>
     <div class="chip-row">
       <button class="chip ${!state.filters.category ? "active" : ""}" data-cat="">All</button>
       ${CATEGORIES.map((c) => `<button class="chip ${state.filters.category === c ? "active" : ""}" data-cat="${c}">${c}</button>`).join("")}
     </div>
 
-    <div class="table-wrap">
+    <div id="grouped-wrap" style="display:${state.grouped?"block":"none"}"></div>
+    <div class="table-wrap" id="flat-wrap" style="display:${state.grouped?"none":"block"}">
       <table>
         <thead><tr><th><input type="checkbox" id="select-all" /></th><th>Name</th><th>URL</th><th>Scope</th><th>Tags</th><th>Category</th><th>Updated</th><th></th></tr></thead>
         <tbody id="entries-body"></tbody>
@@ -371,6 +376,7 @@ function renderVault() {
   );
   bindShell();
   bindVaultEvents();
+  if (state.grouped) renderGrouped();
 }
 
 function vaultStats() {
@@ -389,6 +395,53 @@ function vaultStats() {
   };
 }
 
+async function renderGrouped() {
+  const wrap = document.getElementById("grouped-wrap");
+  if (!wrap) return;
+  if (!state.grouped) { wrap.style.display="none"; document.getElementById("flat-wrap").style.display="block"; return; }
+  wrap.style.display="block"; document.getElementById("flat-wrap").style.display="none";
+  if (!state.groups.length) { wrap.innerHTML=`<div class="empty-state"><div class="big">🗂️</div><h3>No groups</h3><div>Try different filters</div></div>`; return; }
+  wrap.innerHTML = state.groups.map(g=>`
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer" data-group="${g.registrable_domain}">
+        <div style="flex:1">
+          <div style="font-weight:600">${escapeHtml(g.registrable_domain)} <span class="pill violet" style="margin-left:8px">${g.count} ${g.count===1?"entry":"entries"}</span> <span class="pill ${g.effective_category==="Other"?"gray":"cyan"}">${escapeHtml(g.effective_category||"Other")}</span></div>
+          <div style="font-size:12px;color:var(--text-3)">${g.exact_hosts.map(h=>escapeHtml(h)).join(", ")} · ${g.sample_titles.map(t=>escapeHtml(t)).join(", ")}</div>
+        </div>
+        <div style="display:flex;gap:6px"><button class="mini-btn" data-expand="${g.registrable_domain}" title="Expand">${ICONS.eye}</button><button class="mini-btn" data-cat-group="${g.registrable_domain}" title="Set category">${ICONS.edit}</button></div>
+      </div>
+      <div id="group-${g.registrable_domain.replace(/[^a-z0-9]/g,"_")}" style="display:none;border-top:1px solid var(--border)"></div>
+    </div>`).join("");
+  wrap.querySelectorAll("[data-expand]").forEach(b=> b.addEventListener("click", async(e)=>{
+    e.stopPropagation(); const domain=b.dataset.expand; const key=domain.replace(/[^a-z0-9]/g,"_"); const el=document.getElementById("group-"+key);
+    if(el.style.display==="none"){
+      // load entries for this host
+      const entries = await api(`/api/entries?registrable_domain=${encodeURIComponent(domain)}`);
+      el.innerHTML=`<div style="padding:8px"><table style="min-width:0"><thead><tr><th>Name</th><th>URL</th><th>Updated</th><th></th></tr></thead><tbody>`+entries.map(en=>`<tr><td class="strong">${escapeHtml(en.title)} ${en.is_duplicate?`<span class="pill red">dup</span>`:""}</td><td>${escapeHtml(en.host||hostOf(en.url))}</td><td>${timeAgo(en.updated_at)}</td><td><div class="cell-actions"><button class="mini-btn" data-view="${en.id}">${ICONS.eye}</button><button class="mini-btn" data-edit="${en.id}">${ICONS.edit}</button></div></td></tr>`).join("")+`</tbody></table></div>`;
+      el.style.display="block";
+      el.querySelectorAll("[data-view]").forEach(x=> x.addEventListener("click", ()=> viewEntry(Number(x.dataset.view))));
+      el.querySelectorAll("[data-edit]").forEach(x=> x.addEventListener("click", ()=> openEntryForm(Number(x.dataset.edit))));
+    } else el.style.display="none";
+  }));
+  wrap.querySelectorAll("[data-cat-group]").forEach(b=> b.addEventListener("click", ()=>{
+    const domain=b.dataset.catGroup; const grp=state.groups.find(g=>g.registrable_domain===domain);
+    openGroupCategoryModal(domain, grp);
+  }));
+}
+function openGroupCategoryModal(domain, grp){
+  const cats = state.categories.flatMap(c=> [c, ...(c.children||[]) ]);
+  openModal(`<div class="modal-head"><div class="modal-title">Set category for ${escapeHtml(domain)}</div><button class="modal-close" data-close="1">×</button></div><div class="field"><label>Category (global, admin only)</label><select class="input" id="g-cat"><option value="">— Keep —</option>${cats.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}${c.parent_id?" (sub)":""}</option>`).join("")}</select></div><div style="font-size:12px;color:var(--text-3)">Admin change affects all users; user private change via entry detail → my-category (phone).</div><div class="modal-foot"><button class="btn btn-ghost" data-close="1">Cancel</button><button class="btn btn-primary" id="g-save">Save</button></div>`);
+  document.getElementById("g-save").addEventListener("click", async()=>{
+    const cid=document.getElementById("g-cat").value?Number(document.getElementById("g-cat").value):null;
+    if(!cid) return toast("Choose a category","error");
+    try{
+      // bulk assign all entries in group to category
+      const entryIds = grp.entry_ids;
+      await api(`/api/entries/bulk-assign?category_id=${cid}`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(entryIds)});
+      toast(`Updated ${entryIds.length} entries to category`,"success"); closeModal(); await loadGroups(); renderGrouped();
+    }catch(e){ toast(e.message,"error"); }
+  });
+}
 function renderEntryRows() {
   const body = document.getElementById("entries-body");
   const empty = document.getElementById("entries-empty");
@@ -443,7 +496,8 @@ function bindVaultEvents() {
   if(dupChk) dupChk.addEventListener("change", async()=>{ state.filters.is_duplicate=dupChk.checked?"true":""; await loadEntries(); renderEntryRows(); });
   if(favChk) favChk.addEventListener("change", async()=>{ state.filters.is_favorite=favChk.checked; await loadEntries(); renderEntryRows(); });
   if(sortSel) sortSel.addEventListener("change", async()=>{ state.filters.sort=sortSel.value; await loadEntries(); renderEntryRows(); });
-  if(clearBtn) clearBtn.addEventListener("click", async()=>{ state.filters={q:"",category:"",district_id:"",block_id:"",is_duplicate:"",tag:"",is_favorite:false,sort:"title"}; await loadEntries(); renderVault(); });
+  if(clearBtn) clearBtn.addEventListener("click", async()=>{ state.filters={q:"",category:"",district_id:"",block_id:"",is_duplicate:"",tag:"",is_favorite:false,sort:"title"}; await loadEntries(); if(state.grouped) await loadGroups(); renderVault(); });
+  const groupedToggle=document.getElementById("grouped-toggle"); if(groupedToggle) groupedToggle.addEventListener("change", async()=>{ state.grouped=groupedToggle.checked; if(state.grouped) await loadGroups(); renderGrouped(); document.getElementById("flat-wrap").style.display=state.grouped?"none":"block"; document.getElementById("grouped-wrap").style.display=state.grouped?"block":"none"; if(!state.grouped) renderEntryRows(); });
   const bulkDistrict=document.getElementById("bulk-district"); const bulkBlock=document.getElementById("bulk-block"); const bulkAssign=document.getElementById("bulk-assign"); const bulkClear=document.getElementById("bulk-clear"); const selectAll=document.getElementById("select-all");
   if(bulkAssign) bulkAssign.addEventListener("click", async()=>{
     const ids=[...state.selectedIds]; if(!ids.length) return; const did=bulkDistrict.value?Number(bulkDistrict.value):null; const bid=bulkBlock.value?Number(bulkBlock.value):null; try{ await api(`/api/entries/bulk-assign?district_id=${did||""}&block_id=${bid||""}`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ids)}); toast(`Assigned ${ids.length} entries`,"success"); state.selectedIds.clear(); await loadEntries(); renderEntryRows(); }catch(e){toast(e.message,"error");}
@@ -505,7 +559,8 @@ async function viewEntry(id) {
         </div>
       </div>
       <div class="field"><label>Notes</label><div style="color:var(--text-2);white-space:pre-wrap">${escapeHtml(e.notes || "—")}</div></div>
-      <div class="field" style="display:flex;gap:6px;flex-wrap:wrap">${e.district_name?`<span class="pill violet">${escapeHtml(e.district_name)}</span>`:""} ${e.block_name?`<span class="pill cyan">${escapeHtml(e.block_name)}</span>`:""} ${e.is_duplicate?`<span class="pill red">duplicate</span>`:""} ${pillFor(e.category)} ${(e.tags||[]).map(t=>`<span class="pill green">${escapeHtml(t)}</span>`).join("")}</div>
+      <div class="field" style="display:flex;gap:6px;flex-wrap:wrap">${e.district_name?`<span class="pill violet">${escapeHtml(e.district_name)}</span>`:""} ${e.block_name?`<span class="pill cyan">${escapeHtml(e.block_name)}</span>`:""} ${e.is_duplicate?`<span class="pill red">duplicate</span>`:""} <span class="pill cyan">${escapeHtml(e.effective_category||e.category)}</span>${e.effective_subcategory?`<span class="pill violet">${escapeHtml(e.effective_subcategory)}</span>`:""} ${(e.tags||[]).map(t=>`<span class="pill green">${escapeHtml(t)}</span>`).join("")} <span class="pill gray">${escapeHtml(e.registrable_domain||hostOf(e.url))}</span></div>
+      <div class="field" style="display:flex;gap:8px"><select class="input" id="my-cat" style="flex:1"><option value="">My category (private)</option>${state.categories.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}</select><button class="btn btn-ghost" id="my-cat-save">Set my</button><button class="btn btn-ghost" id="global-cat-save">Set global (admin)</button></div>
       <div class="field" style="display:flex;gap:8px"><input id="new-tag" placeholder="Add private tag" class="input" style="flex:1"/><button class="btn btn-ghost" id="add-tag-btn">Add tag</button><button class="btn btn-ghost" id="fav-btn">${e.is_favorite?"★ Unfavorite":"☆ Favorite"}</button></div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-close="1">Close</button>
@@ -521,6 +576,8 @@ async function viewEntry(id) {
     document.getElementById("copy-username").addEventListener("click", () => copyText(e.username, "Username copied"));
     const tagBtn=document.getElementById("add-tag-btn"); if(tagBtn) tagBtn.addEventListener("click", async()=>{ const v=document.getElementById("new-tag").value.trim(); if(!v) return; try{ await api(`/api/entries/${e.id}/tags`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({tag:v})}); toast("Tag added","success"); closeModal(); viewEntry(e.id); }catch(ex){toast(ex.message,"error");}});
     const favBtn=document.getElementById("fav-btn"); if(favBtn) favBtn.addEventListener("click", async()=>{ try{ await api(`/api/entries/${e.id}/meta`,{method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({is_favorite: !e.is_favorite})}); toast(e.is_favorite?"Unfavorited":"Favorited","success"); closeModal(); viewEntry(e.id);}catch(ex){toast(ex.message,"error");}});
+    const myCatBtn=document.getElementById("my-cat-save"); if(myCatBtn) myCatBtn.addEventListener("click", async()=>{ const v=document.getElementById("my-cat").value; if(!v) return toast("Choose category","error"); try{ await api(`/api/entries/${e.id}/my-category`,{method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({category_id:Number(v)})}); toast("My category saved (private)","success"); closeModal(); viewEntry(e.id);}catch(ex){toast(ex.message,"error");}});
+    const gloBtn=document.getElementById("global-cat-save"); if(gloBtn) gloBtn.addEventListener("click", async()=>{ const v=document.getElementById("my-cat").value; if(!v) return toast("Choose category","error"); try{ await api(`/api/entries/${e.id}/category`,{method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({category_id:Number(v)})}); toast("Global category updated","success"); closeModal(); viewEntry(e.id);}catch(ex){toast(ex.message,"error");}});
     document.getElementById("edit-from-view").addEventListener("click", () => { closeModal(); openEntryForm(e.id); });
   } catch (ex) { toast(ex.message, "error"); }
 }
@@ -543,9 +600,10 @@ function openEntryForm(entryId = null) {
       <div class="field"><label>URL</label><input class="input" id="f-url" maxlength="1024" value="${escapeHtml(existing?.url || "")}" placeholder="https://mail.google.com" /></div>
       <div class="form-row">
         <div class="field"><label>Username</label><input class="input" id="f-username" value="${escapeHtml(existing?.username || "")}" /></div>
-        <div class="field"><label>Category</label>
+        <div class="field"><label>Category (legacy)</label>
           <select class="input" id="f-category">${CATEGORIES.map((c) => `<option value="${c}" ${existing?.category === c ? "selected" : ""}>${c}</option>`).join("")}</select>
         </div>
+        <div class="field"><label>Smart category (global, admin)</label><select class="input" id="f-smart-cat"><option value="">— None</option>${state.categories.map(c=>`<option value="${c.id}" ${existing?.smart_category_id===c.id?"selected":""}>${escapeHtml(c.name)}</option>`).join("")}${state.categories.flatMap(c=> c.children||[]).map(sc=>`<option value="${sc.id}" ${existing?.smart_subcategory_id===sc.id?"selected":""}>↳ ${escapeHtml(sc.name)}</option>`).join("")}</select></div>
       </div>
       <div class="form-row">
         <div class="field"><label>District</label><select class="input" id="f-district"><option value="">— Unassigned</option>${state.districts.map(d=>`<option value="${d.id}" ${existing?.district_id===d.id?"selected":""}>${escapeHtml(d.name)}</option>`).join("")}</select></div>
@@ -588,6 +646,7 @@ function openEntryForm(entryId = null) {
       category: document.getElementById("f-category").value,
       district_id: document.getElementById("f-district").value?Number(document.getElementById("f-district").value):null,
       block_id: document.getElementById("f-block").value?Number(document.getElementById("f-block").value):null,
+      smart_category_id: document.getElementById("f-smart-cat")?.value?Number(document.getElementById("f-smart-cat").value):null,
     };
     if (!payload.title || !payload.password) {
       err.textContent = "Title and password are required";
@@ -771,6 +830,11 @@ function openImportWizard() {
           <span class="pill green">${p.total_rows} rows parsed</span>
           <span class="pill gray">${escapeHtml(p.file.name)}</span>
         </div>
+        <div class="preview-meta" style="margin-top:12px"><strong>Host groups (collapsed)</strong> — registrable domain merges subdomains</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0">${p.host_groups.map(g=>`<span class="pill violet">${escapeHtml(g.registrable_domain)} (${g.count})</span>`).join("")||"<span class=\"pill gray\">—</span>"}</div>
+        <div class="preview-meta"><strong>Smart categories (AI ${p.smart_groups.some(x=>x.is_ai)?"✨":"rule"})</strong> — permit to apply</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0">${p.smart_groups.map(g=>`<span class="pill cyan">${escapeHtml(g.registrable_domain)} → ${escapeHtml(g.proposed_category)} ${g.is_ai?"✨":""}</span>`).join("")||"<span class=\"pill gray\">—</span>"}</div>
+        <div style="display:flex;gap:8px;margin:12px 0"><label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="wiz-permit" /> Permit smart categories</label><span style="font-size:12px;color:var(--text-3)">If unchecked, imports with original categories (normal collapsed)</span></div>
         <div class="table-wrap" style="border-radius:12px">
           <table>
             <thead><tr><th>Title</th><th>URL</th><th>Username</th><th>Password</th><th>Category</th></tr></thead>
@@ -794,7 +858,7 @@ function openImportWizard() {
       const form = new FormData();
       form.append("file", p.file);
       form.append("mapping", JSON.stringify(p.mapping));
-      const did=document.getElementById("wiz-district")?.value; const bid=document.getElementById("wiz-block")?.value; const dedup=document.getElementById("wiz-dedup")?.value||"none"; const skip=document.getElementById("wiz-skip")?.checked; if(did) form.append("district_id", did); if(bid) form.append("block_id", bid); form.append("dedup_mode", dedup); form.append("skip_duplicates", skip?"true":"false");
+      const did=document.getElementById("wiz-district")?.value; const bid=document.getElementById("wiz-block")?.value; const dedup=document.getElementById("wiz-dedup")?.value||"none"; const skip=document.getElementById("wiz-skip")?.checked; const permit=document.getElementById("wiz-permit")?.checked; if(did) form.append("district_id", did); if(bid) form.append("block_id", bid); form.append("dedup_mode", dedup); form.append("skip_duplicates", skip?"true":"false"); form.append("permit_smart", permit?"true":"false");
       try {
         const res = await api("/api/import/confirm", { method: "POST", body: form });
         closeModal();
@@ -821,6 +885,18 @@ async function loadDistricts() {
 }
 async function loadBlocks() {
   try { state.blocks = await api("/api/blocks"); } catch(e){ state.blocks=[]; }
+}
+async function loadCategories() {
+  try { state.categories = await api("/api/categories"); } catch(e){ state.categories=[]; }
+}
+async function loadGroups() {
+  try {
+    const params = new URLSearchParams();
+    if (state.filters.q) params.set("q", state.filters.q);
+    if (state.filters.district_id) params.set("district_id", state.filters.district_id);
+    if (state.filters.block_id) params.set("block_id", state.filters.block_id);
+    state.groups = await api(`/api/entries/groups?${params}`);
+  } catch(e){ state.groups=[]; }
 }
 
 async function renderUsers() {
@@ -1051,8 +1127,9 @@ async function router() {
   if (!state.user || state.user.role !== "admin") return renderLogin();
 
   if (route.startsWith("/vault")) {
-    await Promise.allSettled([loadDistricts(), loadBlocks()]);
+    await Promise.allSettled([loadDistricts(), loadBlocks(), loadCategories()]);
     await loadEntries();
+    if (state.grouped) await loadGroups();
     try {
       renderVault();
       renderEntryRows();

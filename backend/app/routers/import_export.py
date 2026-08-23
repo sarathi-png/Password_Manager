@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 from ..crypto import decrypt, encrypt
 from ..database import get_db
 from ..deps import get_current_user, require_admin
-from ..models import AuditLog, District, Block, PasswordEntry, User
+from ..models import AuditLog, Category, District, Block, PasswordEntry, User
 from ..schemas import ImportConfirm, ImportPreview, ImportPreviewRow, ImportResult
 from ..services import exporter, importer
+from ..services.smart_categorizer import group_by_registrable, host_group_key_for, propose_smart_groups, registrable_domain
 from ..config import get_settings
 
 router = APIRouter(prefix="/api", tags=["import-export"])
@@ -32,11 +33,21 @@ async def preview_import(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     sample = [ImportPreviewRow(**row.__dict__) for row in parsed.rows[:5]]
+    # host groups collapsed by registrable domain (lokos.in merges subdomains)
+    host_groups = group_by_registrable(parsed.rows)
+    # smart analysis (rule + optional AI) — permit step decides whether to apply
+    smart_groups = propose_smart_groups(host_groups, use_ai=True)
+    # convert to schemas
+    from ..schemas import HostGroup as HostGroupSchema, SmartGroup as SmartGroupSchema
+    hg = [HostGroupSchema(registrable_domain=g["registrable_domain"], exact_hosts=g["exact_hosts"], count=g["count"], sample_titles=g["sample_titles"]) for g in host_groups]
+    sg = [SmartGroupSchema(registrable_domain=g["registrable_domain"], count=g["count"], proposed_category=g["proposed_category"], proposed_subcategory=g.get("proposed_subcategory"), confidence=g["confidence"], is_ai=g["is_ai"]) for g in smart_groups]
     return ImportPreview(
         detected_format=parsed.detected_format,
         total_rows=len(parsed.rows),
         sample=sample,
         mapping=parsed.mapping,
+        host_groups=hg,
+        smart_groups=sg,
     )
 
 
@@ -48,6 +59,7 @@ async def confirm_import(
     block_id: int | None = Form(default=None),
     skip_duplicates: bool = Form(default=False),
     dedup_mode: str = Form(default="none"),
+    permit_smart: bool = Form(default=False),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -65,6 +77,7 @@ async def confirm_import(
     body.dedup_mode = dedup_mode
     body.district_id = district_id
     body.block_id = block_id
+    body.permit_smart = permit_smart
 
     data = await file.read()
     try:
@@ -139,6 +152,21 @@ async def confirm_import(
         except Exception:
             strict_existing = set(broad_existing)
 
+    # smart grouping (registrable domain) for host fields + optional AI category
+    host_groups = group_by_registrable(parsed.rows)
+    smart_groups = propose_smart_groups(host_groups, use_ai=True) if getattr(body, "permit_smart", False) else []
+    smart_map: dict[str, int | None] = {}
+    if getattr(body, "permit_smart", False):
+        # ensure Category rows exist for proposed names
+        for g in smart_groups:
+            name = g["proposed_category"]
+            cat = db.query(Category).filter(Category.name == name).first()
+            if not cat:
+                cat = Category(name=name, slug=name.lower().replace(" ", "-"), is_system=False)
+                db.add(cat)
+                db.flush()
+            smart_map[g["registrable_domain"]] = cat.id
+
     for row in parsed.rows:
         try:
             # Determine duplicate status for marking
@@ -158,6 +186,13 @@ async def confirm_import(
 
             # Mark as duplicate but still import
             is_duplicate_flag = is_dup
+            # host grouping
+            h, reg, _key = host_group_key_for(row.url)
+            host_val = h
+            exact_val = h
+            reg_val = reg
+            host_key = reg or h
+            smart_cat_id = smart_map.get(reg) if getattr(body, "permit_smart", False) else None
 
             entry = PasswordEntry(
                 title=row.title[:255],
@@ -170,6 +205,11 @@ async def confirm_import(
                 district_id=target_district_id,
                 block_id=target_block_id,
                 is_duplicate=is_duplicate_flag,
+                host=host_val[:255],
+                exact_host=exact_val[:255],
+                registrable_domain=reg_val[:255],
+                host_group_key=host_key[:255],
+                smart_category_id=smart_cat_id,
             )
             db.add(entry)
             db.flush()

@@ -50,6 +50,21 @@ class User(Base):
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user")
 
 
+class Category(Base):
+    """Hierarchical category tree: e.g. Education -> LokOS -> LokOS-School"""
+    __tablename__ = "categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    slug: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    parent: Mapped["Category | None"] = relationship(back_populates="children", remote_side="Category.id")
+    children: Mapped[list["Category"]] = relationship(back_populates="parent", cascade="all, delete-orphan")
+
+
 class PasswordEntry(Base):
     __tablename__ = "password_entries"
 
@@ -60,6 +75,13 @@ class PasswordEntry(Base):
     password_cipher: Mapped[str] = mapped_column(Text, nullable=False)
     notes_cipher: Mapped[str] = mapped_column(Text, nullable=False, default="")
     category: Mapped[str] = mapped_column(String(32), nullable=False, default="other", index=True)
+    # smart grouping
+    host: Mapped[str] = mapped_column(String(255), nullable=False, default="", index=True)
+    exact_host: Mapped[str] = mapped_column(String(255), nullable=False, default="", index=True)
+    registrable_domain: Mapped[str] = mapped_column(String(255), nullable=False, default="", index=True)
+    host_group_key: Mapped[str] = mapped_column(String(255), nullable=False, default="", index=True)
+    smart_category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
+    smart_subcategory_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -72,6 +94,8 @@ class PasswordEntry(Base):
     owner: Mapped[User] = relationship(back_populates="entries")
     district_obj: Mapped[District | None] = relationship(foreign_keys=[district_id])
     block_obj: Mapped[Block | None] = relationship(foreign_keys=[block_id])
+    smart_category: Mapped[Category | None] = relationship(foreign_keys=[smart_category_id])
+    smart_subcategory: Mapped[Category | None] = relationship(foreign_keys=[smart_subcategory_id])
 
 
 class UserEntryTag(Base):
@@ -101,6 +125,23 @@ class UserEntryMeta(Base):
 
     user: Mapped[User] = relationship()
     entry: Mapped[PasswordEntry] = relationship()
+
+
+class UserCategoryOverride(Base):
+    """Private per-user category/subcategory override (visible only on that user's phone). Admin writes global PasswordEntry.smart_*."""
+    __tablename__ = "user_category_overrides"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    entry_id: Mapped[int] = mapped_column(ForeignKey("password_entries.id", ondelete="CASCADE"), nullable=False, index=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    subcategory_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+    user: Mapped[User] = relationship()
+    entry: Mapped[PasswordEntry] = relationship()
+    category: Mapped[Category | None] = relationship(foreign_keys=[category_id])
+    subcategory: Mapped[Category | None] = relationship(foreign_keys=[subcategory_id])
 
 
 class AuditLog(Base):

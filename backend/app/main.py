@@ -11,7 +11,7 @@ from . import security
 from .config import get_settings
 from .database import Base, SessionLocal, engine
 from .models import AuditLog, User
-from .routers import audit, auth, districts, entries, import_export, users
+from .routers import audit, auth, categories, districts, entries, import_export, users
 from sqlalchemy import inspect, text
 
 settings = get_settings()
@@ -44,14 +44,47 @@ def _ensure_migrations():
                     except Exception:
                         # fallback for SQLite older
                         conn.execute(text("ALTER TABLE password_entries ADD COLUMN is_duplicate BOOLEAN NOT NULL DEFAULT 0"))
+                for col, typ in [
+                    ("host", "VARCHAR(255)"),
+                    ("exact_host", "VARCHAR(255)"),
+                    ("registrable_domain", "VARCHAR(255)"),
+                    ("host_group_key", "VARCHAR(255)"),
+                    ("smart_category_id", "INTEGER"),
+                    ("smart_subcategory_id", "INTEGER"),
+                ]:
+                    if col not in cols:
+                        conn.execute(text(f"ALTER TABLE password_entries ADD COLUMN {col} {typ}"))
         # ensure new tables for districts/blocks etc. already via create_all, but ensure is_duplicate default backfill
         try:
             with engine.begin() as conn:
                 conn.execute(text("UPDATE password_entries SET is_duplicate = FALSE WHERE is_duplicate IS NULL"))
+                conn.execute(text("UPDATE password_entries SET host = '' WHERE host IS NULL"))
+                conn.execute(text("UPDATE password_entries SET host_group_key = COALESCE(registrable_domain, host, '') WHERE host_group_key IS NULL OR host_group_key = ''"))
         except Exception:
             pass
     except Exception:
         pass  # best effort; tests use fresh DB
+
+    # seed system categories
+    try:
+        from .models import Category
+        with SessionLocal() as db:
+            if db.query(Category).count() == 0:
+                seed = [
+                    ("Education", None), ("Finance", None), ("Work", None), ("Government", None),
+                    ("Health", None), ("Shopping", None), ("Social", None), ("Other", None),
+                ]
+                for name, parent in seed:
+                    db.add(Category(name=name, slug=name.lower(), parent_id=None, is_system=True))
+                db.commit()
+                # add LokOS as subcategory of Education for demo
+                edu = db.query(Category).filter(Category.name == "Education").first()
+                if edu:
+                    db.add(Category(name="LokOS", slug="lokos", parent_id=edu.id, is_system=True))
+                    db.add(Category(name="LokOS-School", slug="lokos-school", parent_id=edu.id, is_system=True))
+                    db.commit()
+    except Exception:
+        pass
 
 
 @asynccontextmanager
@@ -76,6 +109,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(districts.router)
+    app.include_router(categories.router)
     app.include_router(entries.router)
     app.include_router(import_export.router)
     app.include_router(audit.router)

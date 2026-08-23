@@ -64,6 +64,22 @@ class UserUpdate(BaseModel):
     block_id: int | None = None
 
 
+class CategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    slug: str
+    parent_id: int | None = None
+    is_system: bool
+    created_at: object
+    children: list["CategoryOut"] = Field(default_factory=list)
+
+
+class CategoryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    parent_id: int | None = None
+
+
 class EntryIn(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     url: str = Field(default="", max_length=1024)
@@ -73,6 +89,8 @@ class EntryIn(BaseModel):
     category: str = Field(default="other", max_length=32)
     district_id: int | None = None
     block_id: int | None = None
+    smart_category_id: int | None = None
+    smart_subcategory_id: int | None = None
 
 
 class EntryOut(BaseModel):
@@ -84,6 +102,15 @@ class EntryOut(BaseModel):
     password: str
     notes: str
     category: str
+    host: str = ""
+    exact_host: str = ""
+    registrable_domain: str = ""
+    smart_category_id: int | None = None
+    smart_subcategory_id: int | None = None
+    smart_category_name: str | None = None
+    smart_subcategory_name: str | None = None
+    effective_category: str = "other"
+    effective_subcategory: str | None = None
     district_id: int | None = None
     block_id: int | None = None
     district_name: str | None = None
@@ -102,6 +129,12 @@ class EntrySummary(BaseModel):
     title: str
     url: str
     category: str
+    host: str = ""
+    registrable_domain: str = ""
+    smart_category_name: str | None = None
+    smart_subcategory_name: str | None = None
+    effective_category: str = "other"
+    effective_subcategory: str | None = None
     district_id: int | None = None
     block_id: int | None = None
     district_name: str | None = None
@@ -122,11 +155,29 @@ class ImportPreviewRow(BaseModel):
     category: str = "other"
 
 
+class HostGroup(BaseModel):
+    registrable_domain: str
+    exact_hosts: list[str]
+    count: int
+    sample_titles: list[str]
+
+
+class SmartGroup(BaseModel):
+    registrable_domain: str
+    count: int
+    proposed_category: str
+    proposed_subcategory: str | None = None
+    confidence: float = 0.0
+    is_ai: bool = False
+
+
 class ImportPreview(BaseModel):
     detected_format: str
     total_rows: int
     sample: list[ImportPreviewRow]
     mapping: dict[str, str]
+    host_groups: list[HostGroup] = Field(default_factory=list)
+    smart_groups: list[SmartGroup] = Field(default_factory=list)
 
 
 class ImportConfirm(BaseModel):
@@ -138,6 +189,8 @@ class ImportConfirm(BaseModel):
     dedup_mode: str = Field(default="none", pattern=r"^(none|exact|title_url|title_url_username)$")
     district_id: int | None = None
     block_id: int | None = None
+    permit_smart: bool = False
+    smart_category_id: int | None = None
 
 
 class ImportResult(BaseModel):
@@ -154,6 +207,11 @@ class UserTagIn(BaseModel):
 class UserMetaIn(BaseModel):
     is_favorite: bool | None = None
     is_pinned: bool | None = None
+
+
+class UserCategoryIn(BaseModel):
+    category_id: int | None = None
+    subcategory_id: int | None = None
 
 
 class AuditOut(BaseModel):

@@ -316,10 +316,17 @@ a { color: var(--accent-2); text-decoration: none; }
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
+.table-wrap::-webkit-scrollbar { height: 6px; }
+.table-wrap::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; }
 
-table { width: 100%; border-collapse: collapse; }
+table { width: 100%; border-collapse: collapse; min-width: 880px; }
+.main { min-width: 0; }
 
 thead th {
   text-align: left;
@@ -346,6 +353,14 @@ tbody tr:last-child td { border-bottom: none; }
 td.strong { color: var(--text-1); font-weight: 500; }
 
 .cell-actions { display: flex; gap: 4px; justify-content: flex-end; }
+thead th:last-child, tbody td:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--surface-1);
+  box-shadow: -8px 0 12px rgba(0,0,0,0.18);
+  z-index: 1;
+}
+tbody tr:hover td:last-child { background: rgba(255,255,255,0.02); }
 
 .mini-btn {
   background: none; border: 1px solid transparent;
@@ -614,6 +629,12 @@ td.strong { color: var(--text-1); font-weight: 500; }
 
 /* ---------- Responsive ---------- */
 
+@media (max-width: 1100px) {
+  table { min-width: 760px; }
+  /* hide TAGS on medium to reclaim width, still visible in detail sheet */
+  th:nth-child(5), td:nth-child(5) { display: none; }
+}
+
 @media (max-width: 900px) {
   .sidebar { width: 68px; padding: 20px 10px; }
   .brand-name, .nav-item span:not(.icon), .user-chip .meta { display: none; }
@@ -622,4 +643,13 @@ td.strong { color: var(--text-1); font-weight: 500; }
   .bento-sm { grid-column: span 6; }
   .main { padding: 24px 18px 56px; }
   .form-row { grid-template-columns: 1fr; }
+  /* hide SCOPE on narrow, keep actions sticky */
+  th:nth-child(4), td:nth-child(4) { display: none; }
+  table { min-width: 640px; }
+}
+
+@media (max-width: 640px) {
+  .toolbar { gap: 8px; }
+  .chip-row { gap: 6px; }
+  table { min-width: 560px; }
 }

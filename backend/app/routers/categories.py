@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import require_admin, get_current_user
 from ..models import Category, User
-from ..schemas import CategoryCreate, CategoryOut
+from ..schemas import CategoryCreate, CategoryOut, CategoryUpdate
 
 router = APIRouter(prefix="/api/categories", tags=["categories"])
 
@@ -21,10 +21,30 @@ def _to_tree(cats: list[Category]) -> list[CategoryOut]:
     return roots
 
 
+def _entry_counts(db: Session) -> dict[int, int]:
+    from ..models import PasswordEntry
+    counts: dict[int, int] = {}
+    rows = db.query(PasswordEntry.smart_category_id, PasswordEntry.smart_subcategory_id).all()
+    for cat_id, sub_id in rows:
+        if cat_id:
+            counts[cat_id] = counts.get(cat_id, 0) + 1
+        if sub_id:
+            counts[sub_id] = counts.get(sub_id, 0) + 1
+    return counts
+
+
+def _fill_counts(nodes: list[CategoryOut], counts: dict[int, int]) -> None:
+    for n in nodes:
+        n.entry_count = counts.get(n.id, 0)
+        _fill_counts(n.children, counts)
+
+
 @router.get("", response_model=list[CategoryOut])
 def list_categories(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     cats = db.query(Category).order_by(Category.name).all()
-    return _to_tree(cats)
+    tree = _to_tree(cats)
+    _fill_counts(tree, _entry_counts(db))
+    return tree
 
 
 @router.post("", response_model=CategoryOut, status_code=201)
@@ -37,6 +57,22 @@ def create_category(body: CategoryCreate, admin: User = Depends(require_admin), 
         raise HTTPException(status_code=409, detail="Category already exists under this parent")
     cat = Category(name=body.name.strip(), slug=body.name.strip().lower().replace(" ", "-"), parent_id=body.parent_id, is_system=False)
     db.add(cat)
+    db.commit()
+    db.refresh(cat)
+    return CategoryOut.model_validate(cat)
+
+
+@router.put("/{cat_id}", response_model=CategoryOut)
+def rename_category(cat_id: int, body: CategoryUpdate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    cat = db.get(Category, cat_id)
+    if not cat:
+        raise HTTPException(status_code=404, detail="Not found")
+    name = body.name.strip()
+    q = db.query(Category).filter(Category.name == name, Category.parent_id == cat.parent_id, Category.id != cat_id).first()
+    if q:
+        raise HTTPException(status_code=409, detail="Category already exists under this parent")
+    cat.name = name
+    cat.slug = name.lower().replace(" ", "-")
     db.commit()
     db.refresh(cat)
     return CategoryOut.model_validate(cat)

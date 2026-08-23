@@ -81,6 +81,7 @@ const ICONS = {
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
   log: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3"/><path d="M8 20H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
   box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>',
+  tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>',
 };
 
 /* ---------------- Utils ---------------- */
@@ -239,6 +240,7 @@ function shell(title, subtitle, content, activeNav) {
         <button class="nav-item ${activeNav === "users" ? "active" : ""}" data-nav="users">${ICONS.users}<span>Users</span></button>
         <button class="nav-item ${activeNav === "audit" ? "active" : ""}" data-nav="audit">${ICONS.log}<span>Audit log</span></button>
         <button class="nav-item ${activeNav === "districts" ? "active" : ""}" data-nav="districts">${ICONS.box}<span>Districts</span></button>
+        <button class="nav-item ${activeNav === "categories" ? "active" : ""}" data-nav="categories">${ICONS.tag}<span>Categories</span></button>
         <div class="sidebar-footer">
           <div class="user-chip">
             <div class="avatar">${escapeHtml((state.user?.username || "?").slice(0, 2))}</div>
@@ -346,10 +348,12 @@ function renderVault() {
       <select id="filter-sort" class="input" style="max-width:140px"><option value="title" ${state.filters.sort==="title"?"selected":""}>Sort: Title</option><option value="recent" ${state.filters.sort==="recent"?"selected":""}>Recent</option><option value="favorite" ${state.filters.sort==="favorite"?"selected":""}>Pinned first</option></select>
       <button class="btn btn-ghost" id="clear-filters">Clear</button>
     </div>
-    <div id="bulk-bar" style="display:${state.selectedIds.size?"flex":"none"};gap:8px;align-items:center;margin:12px 0;padding:10px;background:var(--surface-2);border-radius:10px">
+    <div id="bulk-bar" style="display:${state.selectedIds.size?"flex":"none"};gap:8px;align-items:center;margin:12px 0;padding:10px;background:var(--surface-2);border-radius:10px;flex-wrap:wrap">
       <span>${state.selectedIds.size} selected</span>
       <select id="bulk-district" class="input" style="max-width:140px"><option value="">District</option>${state.districts.map(d=>`<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("")}</select>
       <select id="bulk-block" class="input" style="max-width:140px"><option value="">Block</option>${state.blocks.map(b=>`<option value="${b.id}">${escapeHtml(b.name)}</option>`).join("")}</select>
+      <select id="bulk-cat" class="input" style="max-width:180px"><option value="">Category</option>${catFlat().map(c=>`<option value="${c.id}">${escapeHtml(c.name)}${c.parent_id?" (sub)":""}</option>`).join("")}</select>
+      <input id="bulk-new-cat" class="input" style="max-width:170px" placeholder="or new category…" />
       <button class="btn btn-primary" id="bulk-assign">Assign</button>
       <button class="btn btn-ghost" id="bulk-clear">Clear</button>
     </div>
@@ -405,8 +409,8 @@ async function renderGrouped() {
     <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden">
       <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer" data-group="${g.registrable_domain}">
         <div style="flex:1">
-          <div style="font-weight:600">${escapeHtml(g.registrable_domain)} <span class="pill violet" style="margin-left:8px">${g.count} ${g.count===1?"entry":"entries"}</span> <span class="pill ${g.effective_category==="Other"?"gray":"cyan"}">${escapeHtml(g.effective_category||"Other")}</span></div>
-          <div style="font-size:12px;color:var(--text-3)">${g.exact_hosts.map(h=>escapeHtml(h)).join(", ")} · ${g.sample_titles.map(t=>escapeHtml(t)).join(", ")}</div>
+          <div style="font-weight:600">${escapeHtml(g.display_name || g.registrable_domain)} <span style="font-size:12px;color:var(--text-3);font-weight:400;margin-left:6px">${escapeHtml(g.registrable_domain)}</span> <span class="pill violet" style="margin-left:8px">${g.count} ${g.count===1?"entry":"entries"}</span> <span class="pill ${g.effective_category==="Other"?"gray":"cyan"}">${escapeHtml(g.effective_category||"Other")}</span></div>
+          <div style="font-size:12px;color:var(--text-3)">${[...new Set(g.exact_hosts)].map(h=>escapeHtml(h)).join(", ")} · ${[...new Set(g.sample_titles)].map(t=>escapeHtml(t)).join(", ")}</div>
         </div>
         <div style="display:flex;gap:6px"><button class="mini-btn" data-expand="${g.registrable_domain}" title="Expand">${ICONS.eye}</button><button class="mini-btn" data-cat-group="${g.registrable_domain}" title="Set category">${ICONS.edit}</button></div>
       </div>
@@ -417,7 +421,7 @@ async function renderGrouped() {
     if(el.style.display==="none"){
       // load entries for this host
       const entries = await api(`/api/entries?registrable_domain=${encodeURIComponent(domain)}`);
-      el.innerHTML=`<div style="padding:8px"><table style="min-width:0"><thead><tr><th>Name</th><th>URL</th><th>Updated</th><th></th></tr></thead><tbody>`+entries.map(en=>`<tr><td class="strong">${escapeHtml(en.title)} ${en.is_duplicate?`<span class="pill red">dup</span>`:""}</td><td>${escapeHtml(en.host||hostOf(en.url))}</td><td>${timeAgo(en.updated_at)}</td><td><div class="cell-actions"><button class="mini-btn" data-view="${en.id}">${ICONS.eye}</button><button class="mini-btn" data-edit="${en.id}">${ICONS.edit}</button></div></td></tr>`).join("")+`</tbody></table></div>`;
+      el.innerHTML=`<div style="padding:8px"><table style="min-width:0"><thead><tr><th>Name</th><th>Username</th><th>Updated</th><th style="min-width:110px"></th></tr></thead><tbody>`+entries.map(en=>`<tr><td class="strong">${escapeHtml(en.title)} ${en.is_duplicate?`<span class="pill red">dup</span>`:""}</td><td>${escapeHtml(en.username||"—")}</td><td>${timeAgo(en.updated_at)}</td><td><div class="cell-actions"><button class="mini-btn" data-view="${en.id}">${ICONS.eye}</button><button class="mini-btn" data-edit="${en.id}">${ICONS.edit}</button></div></td></tr>`).join("")+`</tbody></table></div>`;
       el.style.display="block";
       el.querySelectorAll("[data-view]").forEach(x=> x.addEventListener("click", ()=> viewEntry(Number(x.dataset.view))));
       el.querySelectorAll("[data-edit]").forEach(x=> x.addEventListener("click", ()=> openEntryForm(Number(x.dataset.edit))));
@@ -430,11 +434,18 @@ async function renderGrouped() {
 }
 function openGroupCategoryModal(domain, grp){
   const cats = state.categories.flatMap(c=> [c, ...(c.children||[]) ]);
-  openModal(`<div class="modal-head"><div class="modal-title">Set category for ${escapeHtml(domain)}</div><button class="modal-close" data-close="1">×</button></div><div class="field"><label>Category (global, admin only)</label><select class="input" id="g-cat"><option value="">— Keep —</option>${cats.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}${c.parent_id?" (sub)":""}</option>`).join("")}</select></div><div style="font-size:12px;color:var(--text-3)">Admin change affects all users; user private change via entry detail → my-category (phone).</div><div class="modal-foot"><button class="btn btn-ghost" data-close="1">Cancel</button><button class="btn btn-primary" id="g-save">Save</button></div>`);
+  const dn = grp?.display_name || domain;
+  openModal(`<div class="modal-head"><div class="modal-title">Set category for ${escapeHtml(dn)}</div><button class="modal-close" data-close="1">×</button></div><div class="field"><label>Category (global, admin only)</label><select class="input" id="g-cat"><option value="">— Keep —</option>${cats.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}${c.parent_id?" (sub)":""}</option>`).join("")}</select></div><div class="field"><label>Or create new category</label><input class="input" id="g-new-cat" placeholder="New category name…" /></div><div style="font-size:12px;color:var(--text-3)">Applies to all ${grp?grp.count:""} entries under ${escapeHtml(domain)} (all users).</div><div class="modal-foot"><button class="btn btn-ghost" data-close="1">Cancel</button><button class="btn btn-primary" id="g-save">Save</button></div>`);
   document.getElementById("g-save").addEventListener("click", async()=>{
-    const cid=document.getElementById("g-cat").value?Number(document.getElementById("g-cat").value):null;
-    if(!cid) return toast("Choose a category","error");
     try{
+      let cid=document.getElementById("g-cat").value?Number(document.getElementById("g-cat").value):null;
+      const newName=(document.getElementById("g-new-cat").value||"").trim();
+      if(newName){
+        const created=await api("/api/categories",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:newName,parent_id:null})});
+        cid=created.id; toast(`Category "${newName}" created`,"success");
+        await loadCategories();
+      }
+      if(!cid) return toast("Choose or create a category","error");
       // bulk assign all entries in group to category
       const entryIds = grp.entry_ids;
       await api(`/api/entries/bulk-assign?category_id=${cid}`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(entryIds)});
@@ -498,9 +509,25 @@ function bindVaultEvents() {
   if(sortSel) sortSel.addEventListener("change", async()=>{ state.filters.sort=sortSel.value; await loadEntries(); renderEntryRows(); });
   if(clearBtn) clearBtn.addEventListener("click", async()=>{ state.filters={q:"",category:"",district_id:"",block_id:"",is_duplicate:"",tag:"",is_favorite:false,sort:"title"}; await loadEntries(); if(state.grouped) await loadGroups(); renderVault(); });
   const groupedToggle=document.getElementById("grouped-toggle"); if(groupedToggle) groupedToggle.addEventListener("change", async()=>{ state.grouped=groupedToggle.checked; if(state.grouped) await loadGroups(); renderGrouped(); document.getElementById("flat-wrap").style.display=state.grouped?"none":"block"; document.getElementById("grouped-wrap").style.display=state.grouped?"block":"none"; if(!state.grouped) renderEntryRows(); });
-  const bulkDistrict=document.getElementById("bulk-district"); const bulkBlock=document.getElementById("bulk-block"); const bulkAssign=document.getElementById("bulk-assign"); const bulkClear=document.getElementById("bulk-clear"); const selectAll=document.getElementById("select-all");
+  const bulkDistrict=document.getElementById("bulk-district"); const bulkBlock=document.getElementById("bulk-block"); const bulkCat=document.getElementById("bulk-cat"); const bulkNewCat=document.getElementById("bulk-new-cat"); const bulkAssign=document.getElementById("bulk-assign"); const bulkClear=document.getElementById("bulk-clear"); const selectAll=document.getElementById("select-all");
   if(bulkAssign) bulkAssign.addEventListener("click", async()=>{
-    const ids=[...state.selectedIds]; if(!ids.length) return; const did=bulkDistrict.value?Number(bulkDistrict.value):null; const bid=bulkBlock.value?Number(bulkBlock.value):null; try{ await api(`/api/entries/bulk-assign?district_id=${did||""}&block_id=${bid||""}`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ids)}); toast(`Assigned ${ids.length} entries`,"success"); state.selectedIds.clear(); await loadEntries(); renderEntryRows(); }catch(e){toast(e.message,"error");}
+    const ids=[...state.selectedIds]; if(!ids.length) return;
+    try{
+      let cid=bulkCat.value?Number(bulkCat.value):null;
+      const did=bulkDistrict.value?Number(bulkDistrict.value):null; const bid=bulkBlock.value?Number(bulkBlock.value):null;
+      const newName=(bulkNewCat?.value||"").trim();
+      if(newName){
+        const created=await api("/api/categories",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:newName,parent_id:null})});
+        cid=created.id; toast(`Category "${newName}" created`,"success");
+        await loadCategories();
+        state.selectedIds=new Set(ids);
+        renderVault();
+      }
+      const qp=[]; if(did)qp.push(`district_id=${did}`); if(bid)qp.push(`block_id=${bid}`); if(cid)qp.push(`category_id=${cid}`);
+      if(!qp.length) return toast("Choose district, block or category","error");
+      await api(`/api/entries/bulk-assign?${qp.join("&")}`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ids)});
+      toast(`Assigned ${ids.length} entries`,"success"); state.selectedIds.clear(); await loadEntries(); renderEntryRows(); document.getElementById("bulk-bar").style.display="none";
+    }catch(e){toast(e.message,"error");}
   });
   if(bulkClear) bulkClear.addEventListener("click", ()=>{ state.selectedIds.clear(); renderEntryRows(); document.getElementById("bulk-bar").style.display="none";});
   if(selectAll) selectAll.addEventListener("change", (e)=>{ if(e.target.checked){ state.entries.forEach(en=>state.selectedIds.add(en.id));} else state.selectedIds.clear(); renderEntryRows();});
@@ -561,6 +588,7 @@ async function viewEntry(id) {
       <div class="field"><label>Notes</label><div style="color:var(--text-2);white-space:pre-wrap">${escapeHtml(e.notes || "—")}</div></div>
       <div class="field" style="display:flex;gap:6px;flex-wrap:wrap">${e.district_name?`<span class="pill violet">${escapeHtml(e.district_name)}</span>`:""} ${e.block_name?`<span class="pill cyan">${escapeHtml(e.block_name)}</span>`:""} ${e.is_duplicate?`<span class="pill red">duplicate</span>`:""} <span class="pill cyan">${escapeHtml(e.effective_category||e.category)}</span>${e.effective_subcategory?`<span class="pill violet">${escapeHtml(e.effective_subcategory)}</span>`:""} ${(e.tags||[]).map(t=>`<span class="pill green">${escapeHtml(t)}</span>`).join("")} <span class="pill gray">${escapeHtml(e.registrable_domain||hostOf(e.url))}</span></div>
       <div class="field" style="display:flex;gap:8px"><select class="input" id="my-cat" style="flex:1"><option value="">My category (private)</option>${state.categories.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}</select><button class="btn btn-ghost" id="my-cat-save">Set my</button><button class="btn btn-ghost" id="global-cat-save">Set global (admin)</button></div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-3)"><input type="checkbox" id="apply-to-site" /> Apply global category to ALL entries with same site (${escapeHtml(e.registrable_domain || e.host || "this domain")})</label>
       <div class="field" style="display:flex;gap:8px"><input id="new-tag" placeholder="Add private tag" class="input" style="flex:1"/><button class="btn btn-ghost" id="add-tag-btn">Add tag</button><button class="btn btn-ghost" id="fav-btn">${e.is_favorite?"★ Unfavorite":"☆ Favorite"}</button></div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-close="1">Close</button>
@@ -577,7 +605,7 @@ async function viewEntry(id) {
     const tagBtn=document.getElementById("add-tag-btn"); if(tagBtn) tagBtn.addEventListener("click", async()=>{ const v=document.getElementById("new-tag").value.trim(); if(!v) return; try{ await api(`/api/entries/${e.id}/tags`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({tag:v})}); toast("Tag added","success"); closeModal(); viewEntry(e.id); }catch(ex){toast(ex.message,"error");}});
     const favBtn=document.getElementById("fav-btn"); if(favBtn) favBtn.addEventListener("click", async()=>{ try{ await api(`/api/entries/${e.id}/meta`,{method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({is_favorite: !e.is_favorite})}); toast(e.is_favorite?"Unfavorited":"Favorited","success"); closeModal(); viewEntry(e.id);}catch(ex){toast(ex.message,"error");}});
     const myCatBtn=document.getElementById("my-cat-save"); if(myCatBtn) myCatBtn.addEventListener("click", async()=>{ const v=document.getElementById("my-cat").value; if(!v) return toast("Choose category","error"); try{ await api(`/api/entries/${e.id}/my-category`,{method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({category_id:Number(v)})}); toast("My category saved (private)","success"); closeModal(); viewEntry(e.id);}catch(ex){toast(ex.message,"error");}});
-    const gloBtn=document.getElementById("global-cat-save"); if(gloBtn) gloBtn.addEventListener("click", async()=>{ const v=document.getElementById("my-cat").value; if(!v) return toast("Choose category","error"); try{ await api(`/api/entries/${e.id}/category`,{method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({category_id:Number(v)})}); toast("Global category updated","success"); closeModal(); viewEntry(e.id);}catch(ex){toast(ex.message,"error");}});
+    const gloBtn=document.getElementById("global-cat-save"); if(gloBtn) gloBtn.addEventListener("click", async()=>{ const v=document.getElementById("my-cat").value; if(!v) return toast("Choose category","error"); const applyGroup=document.getElementById("apply-to-site")?.checked; try{ const r=await api(`/api/entries/${e.id}/category${applyGroup?"?apply_to_group=true":""}`,{method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({category_id:Number(v)})}); toast(applyGroup?`Applied to ${r.updated||1} entries (whole site)`:"Global category updated","success"); closeModal(); if(state.grouped){await loadGroups(); renderGrouped();} viewEntry(e.id);}catch(ex){toast(ex.message,"error");}});
     document.getElementById("edit-from-view").addEventListener("click", () => { closeModal(); openEntryForm(e.id); });
   } catch (ex) { toast(ex.message, "error"); }
 }
@@ -1110,6 +1138,69 @@ function renderDistricts() {
   document.getElementById("add-block").addEventListener("click", ()=>{ openModal(`<div class="modal-head"><div class="modal-title">Add block</div><button class="modal-close" data-close="1">×</button></div><div class="field"><label>District</label><select class="input" id="b-district">${state.districts.map(d=>`<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("")}</select></div><div class="field"><label>Block name</label><input class="input" id="b-name" /></div><div class="modal-foot"><button class="btn btn-ghost" data-close="1">Cancel</button><button class="btn btn-primary" id="b-create">Create</button></div>`); document.getElementById("b-create").addEventListener("click", async()=>{ const n=document.getElementById("b-name").value.trim(); const did=Number(document.getElementById("b-district").value); if(!n) return; try{ await api("/api/blocks",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({name:n, district_id:did})}); toast("Block created","success"); closeModal(); await loadBlocks(); renderDistricts(); }catch(e){toast(e.message,"error");}});});
 }
 
+/* ---------------- Categories (admin) ---------------- */
+
+function catFlat() {
+  return state.categories.flatMap((c) => [c, ...(c.children || [])]);
+}
+
+async function renderCategories() {
+  document.getElementById("app").innerHTML = shell(
+    "Categories",
+    "Create and manage custom categories. Assign them in bulk from the Vault.",
+    `<div class="toolbar"><button class="btn btn-primary" id="add-category">+ Category</button></div>
+     <div class="table-wrap"><table><thead><tr><th>Name</th><th>Parent</th><th>Entries</th><th>Type</th><th style="min-width:110px"></th></tr></thead><tbody id="category-body"></tbody></table></div>`,
+    "categories"
+  );
+  bindShell();
+  const body = document.getElementById("category-body");
+  const flat = catFlat();
+  body.innerHTML = flat.map((c) => `
+    <tr>
+      <td class="strong">${c.parent_id ? "&nbsp;&nbsp;↳ " : ""}${escapeHtml(c.name)}</td>
+      <td>${escapeHtml(flat.find((p) => p.id === c.parent_id)?.name || "—")}</td>
+      <td>${c.entry_count ?? 0}</td>
+      <td>${c.is_system ? '<span class="pill gray">system</span>' : '<span class="pill cyan">custom</span>'}</td>
+      <td><div class="cell-actions">
+        ${c.is_system ? "" : `<button class="mini-btn" data-ren-cat="${c.id}" title="Rename">${ICONS.edit}</button><button class="mini-btn danger" data-del-cat="${c.id}" title="Delete">${ICONS.trash}</button>`}
+      </div></td>
+    </tr>`).join("") || '<tr><td colspan="5">No categories yet</td></tr>';
+  body.querySelectorAll("[data-del-cat]").forEach((b) => b.addEventListener("click", async () => {
+    try { await api(`/api/categories/${b.dataset.delCat}`, { method: "DELETE" }); toast("Category deleted", "success"); await loadCategories(); renderCategories(); }
+    catch (e) { toast(e.message, "error"); }
+  }));
+  body.querySelectorAll("[data-ren-cat]").forEach((b) => b.addEventListener("click", () => {
+    const c = flat.find((x) => x.id === Number(b.dataset.renCat));
+    openModal(`<div class="modal-head"><div class="modal-title">Rename category</div><button class="modal-close" data-close="1">×</button></div>
+      <div class="field"><label>Name</label><input class="input" id="ren-name" value="${escapeHtml(c.name)}" /></div>
+      <div class="modal-foot"><button class="btn btn-ghost" data-close="1">Cancel</button><button class="btn btn-primary" id="ren-save">Save</button></div>`);
+    document.getElementById("ren-save").addEventListener("click", async () => {
+      const n = document.getElementById("ren-name").value.trim(); if (!n) return;
+      try { await api(`/api/categories/${c.id}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ name: n }) }); toast("Renamed", "success"); closeModal(); await loadCategories(); renderCategories(); }
+      catch (e) { toast(e.message, "error"); }
+    });
+  }));
+  document.getElementById("add-category").addEventListener("click", () => openCategoryCreateModal(async () => { await loadCategories(); renderCategories(); }));
+}
+
+function openCategoryCreateModal(onDone) {
+  const roots = state.categories;
+  openModal(`<div class="modal-head"><div class="modal-title">New category</div><button class="modal-close" data-close="1">×</button></div>
+    <div class="field"><label>Name</label><input class="input" id="new-cat-name" placeholder="e.g. LokOS Portal" /></div>
+    <div class="field"><label>Parent (optional)</label><select class="input" id="new-cat-parent"><option value="">— Top level —</option>${roots.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}</select></div>
+    <div class="modal-foot"><button class="btn btn-ghost" data-close="1">Cancel</button><button class="btn btn-primary" id="new-cat-save">Create</button></div>`);
+  document.getElementById("new-cat-save").addEventListener("click", async () => {
+    const n = document.getElementById("new-cat-name").value.trim();
+    if (!n) return toast("Enter a name", "error");
+    const pid = document.getElementById("new-cat-parent").value;
+    try {
+      const created = await api("/api/categories", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ name: n, parent_id: pid ? Number(pid) : null }) });
+      toast("Category created", "success"); closeModal();
+      if (onDone) await onDone(created);
+    } catch (e) { toast(e.message, "error"); }
+  });
+}
+
 /* ---------------- Router ---------------- */
 
 async function router() {
@@ -1146,6 +1237,9 @@ async function router() {
   } else if (route.startsWith("/districts")) {
     await Promise.all([loadDistricts(), loadBlocks()]);
     renderDistricts();
+  } else if (route.startsWith("/categories")) {
+    await loadCategories();
+    renderCategories();
   }
 }
 

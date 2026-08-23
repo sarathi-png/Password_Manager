@@ -8,7 +8,7 @@ from ..database import get_db
 from ..deps import get_current_user, require_admin
 from ..models import AuditLog, Block, Category, District, PasswordEntry, User, UserCategoryOverride, UserEntryMeta, UserEntryTag
 from ..schemas import EntryIn, EntryOut, EntrySummary, UserCategoryIn, UserMetaIn, UserTagIn
-from ..services.smart_categorizer import extract_host, registrable_domain, host_group_key_for
+from ..services.smart_categorizer import display_name_for_domain, extract_host, registrable_domain, host_group_key_for
 
 router = APIRouter(prefix="/api/entries", tags=["entries"])
 
@@ -94,6 +94,7 @@ def _to_summary(e: PasswordEntry, d_map, b_map, tag_map, meta_map, cat_map) -> E
         id=e.id,
         title=e.title,
         url=e.url,
+        username=decrypt(e.username_cipher) if e.username_cipher else "",
         category=e.category,
         host=e.host or "",
         registrable_domain=e.registrable_domain or "",
@@ -268,6 +269,7 @@ def list_groups(
                 eff_cat = max(cnt, key=cnt.get)
         out.append({
             "registrable_domain": key,
+            "display_name": display_name_for_domain(key),
             "exact_hosts": sorted(g["exact_hosts"]),
             "count": g["count"],
             "sample_titles": g["sample_titles"],
@@ -401,8 +403,14 @@ def bulk_assign(
     return {"updated": updated}
 
 
-@router.put("/{entry_id}/category", response_model=EntryOut)
-def set_global_category(entry_id: int, body: UserCategoryIn, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+@router.put("/{entry_id}/category", response_model=dict)
+def set_global_category(
+    entry_id: int,
+    body: UserCategoryIn,
+    apply_to_group: bool = False,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     entry = db.get(PasswordEntry, entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -410,11 +418,18 @@ def set_global_category(entry_id: int, body: UserCategoryIn, admin: User = Depen
         raise HTTPException(status_code=404, detail="Category not found")
     if body.subcategory_id and not db.get(Category, body.subcategory_id):
         raise HTTPException(status_code=404, detail="Subcategory not found")
-    entry.smart_category_id = body.category_id
-    entry.smart_subcategory_id = body.subcategory_id
-    _log(db, admin, "entry.category.global", entry.title, f"cat={body.category_id} sub={body.subcategory_id}")
+    targets = [entry]
+    group_key = entry.host_group_key or entry.registrable_domain
+    if apply_to_group and group_key:
+        targets = db.query(PasswordEntry).filter(
+            (PasswordEntry.host_group_key == group_key) | (PasswordEntry.registrable_domain == group_key)
+        ).all()
+    for e in targets:
+        e.smart_category_id = body.category_id
+        e.smart_subcategory_id = body.subcategory_id
+    _log(db, admin, "entry.category.global", entry.title, f"cat={body.category_id} sub={body.subcategory_id} group={apply_to_group} n={len(targets)}")
     db.commit()
-    return _to_out(entry, db, admin)
+    return {"updated": len(targets), "entry": _to_out(entry, db, admin)}
 
 
 @router.put("/{entry_id}/my-category", response_model=dict)

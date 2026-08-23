@@ -138,8 +138,8 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(4))),
                 const SizedBox(height: 12),
-                Text(domain, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600)),
-                Text('${filtered.length} entries', style: GoogleFonts.inter(fontSize: 12, color: AppColors.text3)),
+                Text(displayNameForDomain(domain), style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text('$domain · ${filtered.length} entries', style: GoogleFonts.inter(fontSize: 12, color: AppColors.text3)),
                 const SizedBox(height: 12),
                 Flexible(
                   child: ListView.builder(
@@ -147,7 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     itemCount: filtered.length,
                     itemBuilder: (_, i) => ListTile(
                       title: Text(filtered[i].title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
-                      subtitle: Text(filtered[i].host, style: GoogleFonts.inter(fontSize: 12, color: AppColors.text3)),
+                      subtitle: Text(filtered[i].username.isNotEmpty ? filtered[i].username : filtered[i].host, style: GoogleFonts.inter(fontSize: 12, color: AppColors.text3)),
                       trailing: const Icon(Icons.chevron_right, size: 18),
                       onTap: () {
                         Navigator.pop(context);
@@ -425,6 +425,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final g = _groups[index];
             return _GroupCard(
               domain: g['registrable_domain'] as String? ?? '',
+              displayName: g['display_name'] as String? ?? '',
               count: g['count'] as int? ?? 0,
               category: g['effective_category'] as String? ?? 'Other',
               exactHosts: (g['exact_hosts'] as List?)?.map((e) => e.toString()).toList() ?? [],
@@ -638,16 +639,18 @@ class _EntryCard extends StatelessWidget {
 
 class _GroupCard extends StatelessWidget {
   final String domain;
+  final String displayName;
   final int count;
   final String category;
   final List<String> exactHosts;
   final VoidCallback onTap;
   final VoidCallback onSetCategory;
-  const _GroupCard({required this.domain, required this.count, required this.category, required this.exactHosts, required this.onTap, required this.onSetCategory});
+  const _GroupCard({required this.domain, this.displayName = '', required this.count, required this.category, required this.exactHosts, required this.onTap, required this.onSetCategory});
 
   @override
   Widget build(BuildContext context) {
     final accent = categoryColor(category);
+    final title = displayName.isNotEmpty ? displayName : displayNameForDomain(domain);
     return Material(
       color: AppColors.surface1,
       borderRadius: BorderRadius.circular(16),
@@ -659,13 +662,13 @@ class _GroupCard extends StatelessWidget {
           decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
           child: Row(
             children: [
-              Container(width: 44, height: 44, decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12), border: Border.all(color: accent.withValues(alpha: 0.3))), alignment: Alignment.center, child: Icon(Icons.folder_special_rounded, color: accent, size: 22)),
+              Container(width: 44, height: 44, decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12), border: Border.all(color: accent.withValues(alpha: 0.3))), alignment: Alignment.center, child: Text(title.isNotEmpty ? title[0].toUpperCase() : '?', style: GoogleFonts.inter(fontSize: 19, fontWeight: FontWeight.w800, color: accent))),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [Expanded(child: Text(domain, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.text1))), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)), child: Text('$count', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: accent)))]),
+                  Row(children: [Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.text1))), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)), child: Text('$count', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: accent)))]),
                   const SizedBox(height: 3),
-                  Text(exactHosts.take(2).join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12, color: AppColors.text3)),
+                  Text(domain, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12, color: AppColors.text3)),
                   const SizedBox(height: 3),
                   Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)), child: Text(category, style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: accent, letterSpacing: 0.4))),
                 ]),

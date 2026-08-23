@@ -72,12 +72,17 @@ class CategoryOut(BaseModel):
     parent_id: int | None = None
     is_system: bool
     created_at: object
+    entry_count: int = 0
     children: list["CategoryOut"] = Field(default_factory=list)
 
 
 class CategoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     parent_id: int | None = None
+
+
+class CategoryUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
 
 
 class EntryIn(BaseModel):
@@ -128,6 +133,7 @@ class EntrySummary(BaseModel):
     id: int
     title: str
     url: str
+    username: str = ""
     category: str
     host: str = ""
     registrable_domain: str = ""
@@ -157,6 +163,7 @@ class ImportPreviewRow(BaseModel):
 
 class HostGroup(BaseModel):
     registrable_domain: str
+    display_name: str = ""
     exact_hosts: list[str]
     count: int
     sample_titles: list[str]
@@ -164,6 +171,7 @@ class HostGroup(BaseModel):
 
 class SmartGroup(BaseModel):
     registrable_domain: str
+    display_name: str = ""
     count: int
     proposed_category: str
     proposed_subcategory: str | None = None

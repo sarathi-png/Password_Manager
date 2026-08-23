@@ -75,6 +75,44 @@ def registrable_domain(host: str) -> str:
     return host
 
 
+_MULTI_PART_SUFFIXES = {
+    "co.in", "net.in", "org.in", "firm.in", "gen.in", "ac.in", "res.in", "gov.in",
+    "co.uk", "org.uk", "ac.uk", "gov.uk",
+    "com.au", "net.au", "org.au", "edu.au", "gov.au",
+    "co.jp", "ne.jp", "or.jp", "ac.jp", "go.jp",
+    "com.br", "com.mx", "com.ar", "com.cn", "com.sg", "co.nz", "co.za",
+}
+
+# well-known brand overrides (lowercase domain -> display name)
+_BRAND_NAMES = {
+    "google": "Google", "gmail": "Gmail", "youtube": "YouTube", "facebook": "Facebook",
+    "instagram": "Instagram", "whatsapp": "WhatsApp", "amazon": "Amazon", "flipkart": "Flipkart",
+    "microsoft": "Microsoft", "apple": "Apple", "linkedin": "LinkedIn", "twitter": "Twitter",
+    "x": "X", "netflix": "Netflix", "github": "GitHub", "paypal": "PayPal",
+    "irctc": "IRCTC", "sbi": "SBI", "hdfcbank": "HDFC Bank", "icicibank": "ICICI Bank",
+    "axisbank": "Axis Bank", "kotak": "Kotak", "paytm": "Paytm", "phonepe": "PhonePe",
+    "googlepay": "Google Pay", "razorpay": "Razorpay", "zoho": "Zoho", "slack": "Slack",
+}
+
+
+def display_name_for_domain(reg: str) -> str:
+    """accounts.google.com -> Google, lokos.in -> Lokos"""
+    if not reg or reg == "no-host":
+        return reg
+    labels = [l for l in reg.split(".") if l]
+    if not labels:
+        return reg
+    if len(labels) >= 3 and f"{labels[-2]}.{labels[-1]}" in _MULTI_PART_SUFFIXES:
+        core = labels[-3]
+    elif len(labels) >= 2:
+        core = labels[-2]
+    else:
+        core = labels[0]
+    if core in _BRAND_NAMES:
+        return _BRAND_NAMES[core]
+    return core[:1].upper() + core[1:] if core else reg
+
+
 def host_group_key_for(url: str) -> tuple[str, str, str]:
     h = extract_host(url)
     reg = registrable_domain(h)
@@ -96,6 +134,7 @@ def group_by_registrable(rows) -> list[dict]:
     for reg, g in groups.items():
         out.append({
             "registrable_domain": reg,
+            "display_name": display_name_for_domain(reg),
             "exact_hosts": sorted(g["exact_hosts"]),
             "count": g["count"],
             "sample_titles": g["sample_titles"],
@@ -123,6 +162,7 @@ def propose_smart_groups(host_groups: list[dict], use_ai: bool = True) -> list[d
         cat = _rule_category_for(reg)
         smart.append({
             "registrable_domain": reg,
+            "display_name": display_name_for_domain(reg),
             "count": g["count"],
             "proposed_category": cat,
             "proposed_subcategory": None,

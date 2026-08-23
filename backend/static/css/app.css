@@ -352,15 +352,19 @@ tbody tr:last-child td { border-bottom: none; }
 
 td.strong { color: var(--text-1); font-weight: 500; }
 
-.cell-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.cell-actions { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
 thead th:last-child, tbody td:last-child {
   position: sticky;
   right: 0;
+  min-width: 110px;
+  width: 110px;
+  padding-left: 12px;
   background: var(--surface-1);
   box-shadow: -8px 0 12px rgba(0,0,0,0.18);
-  z-index: 1;
+  z-index: 2;
 }
-tbody tr:hover td:last-child { background: rgba(255,255,255,0.02); }
+thead th:last-child { background: var(--surface-1); }
+tbody tr:hover td:last-child { background: var(--surface-1); }
 
 .mini-btn {
   background: none; border: 1px solid transparent;

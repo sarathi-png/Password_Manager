@@ -61,7 +61,7 @@ class VaultEntry {
         id: json['id'] as int,
         title: json['title'] as String? ?? '',
         url: json['url'] as String? ?? '',
-        username: '',
+        username: json['username'] as String? ?? '',
         password: '',
         notes: '',
         category: json['category'] as String? ?? 'other',
@@ -100,4 +100,48 @@ class VaultEntry {
     final slash = clean.indexOf('/');
     return slash == -1 ? clean : clean.substring(0, slash);
   }
+
+  String get registrableDomain {
+    final h = host;
+    if (h.isEmpty || RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(h)) return h;
+    final labels = h.split('.');
+    if (labels.length <= 2) return h;
+    final lastTwo = labels.sublist(labels.length - 2).join('.');
+    if (_multiPartTlds.contains(lastTwo) && labels.length >= 3) {
+      return labels.sublist(labels.length - 3).join('.');
+    }
+    return lastTwo;
+  }
+}
+
+const _multiPartTlds = {
+  'co.uk', 'org.uk', 'ac.uk', 'gov.uk',
+  'co.in', 'net.in', 'org.in', 'firm.in', 'gen.in', 'ac.in', 'res.in',
+  'com.au', 'net.au', 'org.au', 'edu.au', 'gov.au',
+  'co.jp', 'ne.jp', 'or.jp', 'ac.jp', 'go.jp',
+  'com.br', 'com.mx', 'com.ar', 'com.cn', 'com.sg', 'co.nz', 'co.za',
+};
+
+const _brandNames = {
+  'google': 'Google', 'gmail': 'Gmail', 'youtube': 'YouTube', 'facebook': 'Facebook',
+  'instagram': 'Instagram', 'whatsapp': 'WhatsApp', 'amazon': 'Amazon', 'flipkart': 'Flipkart',
+  'microsoft': 'Microsoft', 'apple': 'Apple', 'linkedin': 'LinkedIn', 'twitter': 'Twitter',
+  'netflix': 'Netflix', 'github': 'GitHub', 'paypal': 'PayPal', 'irctc': 'IRCTC', 'sbi': 'SBI',
+};
+
+String displayNameForDomain(String reg) {
+  if (reg.isEmpty || reg == 'no-host') return reg;
+  final labels = reg.split('.').where((l) => l.isNotEmpty).toList();
+  if (labels.isEmpty) return reg;
+  String core;
+  if (labels.length >= 3 && _multiPartTlds.contains('${labels[labels.length - 2]}.${labels.last}')) {
+    core = labels[labels.length - 3];
+  } else if (labels.length >= 2) {
+    core = labels[labels.length - 2];
+  } else {
+    core = labels.first;
+  }
+  if (_brandNames.containsKey(core)) return _brandNames[core]!;
+  if (core.isEmpty) return reg;
+  return core[0].toUpperCase() + core.substring(1);
 }

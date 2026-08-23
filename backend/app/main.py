@@ -137,7 +137,8 @@ def create_app() -> FastAPI:
 
 def seed_admin() -> None:
     with SessionLocal() as db:
-        if db.query(User).filter(User.role == "admin").count() == 0:
+        admin = db.query(User).filter(User.role == "admin").first()
+        if admin is None:
             admin = User(
                 username=settings.initial_admin_username,
                 password_hash=security.hash_password(settings.initial_admin_password),
@@ -145,6 +146,12 @@ def seed_admin() -> None:
             )
             db.add(admin)
             db.commit()
+        elif settings.sync_admin_password:
+            # opt-in: keep the seeded admin's password in sync with INITIAL_ADMIN_PASSWORD
+            if not security.verify_password(settings.initial_admin_password, admin.password_hash):
+                admin.password_hash = security.hash_password(settings.initial_admin_password)
+                admin.is_active = True
+                db.commit()
 
 
 app = create_app()

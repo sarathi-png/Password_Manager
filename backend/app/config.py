@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
     initial_admin_username: str = "admin"
     initial_admin_password: str = "admin"
+    sync_admin_password: bool = False
     rate_limit_login_per_minute: int = 10
     rate_limit_api_per_minute: int = 300
     max_import_rows: int = 50000

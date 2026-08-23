@@ -22,7 +22,7 @@ async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (state.token) headers["Authorization"] = `Bearer ${state.token}`;
   const resp = await fetch(path, { ...options, headers });
-  if (resp.status === 401) {
+  if (resp.status === 401 && !options.skipAuthError) {
     logout(false);
     throw new Error("Session expired — please log in again");
   }
@@ -194,6 +194,7 @@ function renderLogin() {
     err.style.display = "none";
     try {
       const { access_token } = await api("/api/auth/login", {
+        skipAuthError: true,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: document.getElementById("username").value, password: document.getElementById("password").value }),

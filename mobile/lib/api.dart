@@ -19,7 +19,8 @@ class ApiClient {
   static const _storage = FlutterSecureStorage();
   static const _tokenKey = 'vault_token';
   static const _serverKey = 'vault_server';
-  static const String defaultServer = 'https://vault-lcgd.onrender.com';
+  // Build-time override: flutter build apk --dart-define=API_BASE_URL=http://192.168.1.10:8000
+  static const String defaultServer = String.fromEnvironment('API_BASE_URL', defaultValue: 'https://vault-lcgd.onrender.com');
 
   String baseUrl = defaultServer;
   String? _token;

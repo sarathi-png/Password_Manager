@@ -22,26 +22,42 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  final _serverCtrl = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
+  bool _showServer = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _serverCtrl.text = widget.api.baseUrl;
+  }
 
   @override
   void dispose() {
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
+    _serverCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    final server = _serverCtrl.text.trim();
+    if (server.isEmpty || (!server.startsWith('http://') && !server.startsWith('https://'))) {
+      setState(() => _error = 'Enter a valid server URL (http:// or https://)');
+      return;
+    }
+    // persist server before login so login hits the right host (e.g. http://192.168.1.10:8000 for local)
+    widget.api.baseUrl = server;
+    await widget.api.saveSession(server);
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final user = await widget.api.login(_usernameCtrl.text.trim(), _passwordCtrl.text);
-      await widget.api.saveSession(widget.api.baseUrl);
       widget.onLoggedIn(user);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -140,7 +156,32 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () => setState(() => _showServer = !_showServer),
+                          icon: Icon(_showServer ? Icons.expand_less : Icons.dns_outlined, size: 16, color: AppColors.text3),
+                          label: Text(_showServer ? 'Hide server' : 'Change server', style: GoogleFonts.inter(fontSize: 12.5, color: AppColors.text3)),
+                          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4), minimumSize: const Size(0, 32)),
+                        ),
+                      ),
+                      if (_showServer) ...[
+                        const SizedBox(height: 4),
+                        TextFormField(
+                          controller: _serverCtrl,
+                          keyboardType: TextInputType.url,
+                          decoration: InputDecoration(
+                            labelText: 'Server URL',
+                            hintText: 'https://vault-lcgd.onrender.com',
+                            prefixIcon: const Icon(Icons.link_rounded, size: 18),
+                            helperText: 'Use http://192.168.1.10:8000 for local testing',
+                          ),
+                          validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter server URL' : null,
+                        ),
+                        const SizedBox(height: 6),
+                      ],
+                      const SizedBox(height: 14),
                       FilledButton(
                         onPressed: _loading ? null : _submit,
                         style: FilledButton.styleFrom(

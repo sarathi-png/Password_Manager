@@ -286,7 +286,13 @@ async function loadEntries() {
   if (state.filters.tag) params.set("tag", state.filters.tag);
   if (state.filters.is_favorite) params.set("is_favorite", "true");
   if (state.filters.sort && state.filters.sort !== "title") params.set("sort", state.filters.sort);
-  state.entries = await api(`/api/entries?${params}`);
+  try {
+    state.entries = await api(`/api/entries?${params}`);
+  } catch (e) {
+    console.error("loadEntries failed", e);
+    toast(e.message || "Failed to load entries", "error");
+    state.entries = [];
+  }
 }
 
 function renderVault() {
@@ -1045,9 +1051,15 @@ async function router() {
   if (!state.user || state.user.role !== "admin") return renderLogin();
 
   if (route.startsWith("/vault")) {
-    await Promise.all([loadDistricts(), loadBlocks(), loadEntries()]);
-    renderVault();
-    renderEntryRows();
+    await Promise.allSettled([loadDistricts(), loadBlocks()]);
+    await loadEntries();
+    try {
+      renderVault();
+      renderEntryRows();
+    } catch (e) {
+      console.error("renderVault failed", e);
+      document.getElementById("app").innerHTML = `<div style="padding:32px"><h3>Vault failed to load</h3><p>${escapeHtml(e.message)}</p><p><a href="#/login" class="btn btn-primary">Back to login</a></p></div>`;
+    }
   } else if (route.startsWith("/users")) {
     await Promise.all([loadUsers(), loadAudit()]);
     renderUsers();

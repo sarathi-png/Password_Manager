@@ -38,7 +38,18 @@ def _ensure_migrations():
                 if "block_id" not in cols:
                     conn.execute(text("ALTER TABLE password_entries ADD COLUMN block_id INTEGER"))
                 if "is_duplicate" not in cols:
-                    conn.execute(text("ALTER TABLE password_entries ADD COLUMN is_duplicate BOOLEAN NOT NULL DEFAULT 0"))
+                    # Postgres needs FALSE, SQLite accepts 0; use FALSE for compat, SQLite will coerce
+                    try:
+                        conn.execute(text("ALTER TABLE password_entries ADD COLUMN is_duplicate BOOLEAN NOT NULL DEFAULT FALSE"))
+                    except Exception:
+                        # fallback for SQLite older
+                        conn.execute(text("ALTER TABLE password_entries ADD COLUMN is_duplicate BOOLEAN NOT NULL DEFAULT 0"))
+        # ensure new tables for districts/blocks etc. already via create_all, but ensure is_duplicate default backfill
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("UPDATE password_entries SET is_duplicate = FALSE WHERE is_duplicate IS NULL"))
+        except Exception:
+            pass
     except Exception:
         pass  # best effort; tests use fresh DB
 

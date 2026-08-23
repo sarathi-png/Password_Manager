@@ -1,13 +1,14 @@
 import io
+import json
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from ..crypto import encrypt
+from ..crypto import decrypt, encrypt
 from ..database import get_db
 from ..deps import get_current_user, require_admin
-from ..models import AuditLog, PasswordEntry, User
+from ..models import AuditLog, District, Block, PasswordEntry, User
 from ..schemas import ImportConfirm, ImportPreview, ImportPreviewRow, ImportResult
 from ..services import exporter, importer
 from ..config import get_settings
@@ -42,10 +43,29 @@ async def preview_import(
 @router.post("/import/confirm", response_model=ImportResult)
 async def confirm_import(
     file: UploadFile = File(...),
-    body: ImportConfirm = ImportConfirm(),
+    mapping: str = Form(default="{}"),
+    district_id: int | None = Form(default=None),
+    block_id: int | None = Form(default=None),
+    skip_duplicates: bool = Form(default=False),
+    dedup_mode: str = Form(default="none"),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    # Backward compat: mapping may be JSON string or already parsed; also support body JSON via query fallback
+    try:
+        parsed_mapping = json.loads(mapping) if isinstance(mapping, str) else {}
+    except Exception:
+        parsed_mapping = {}
+    # Reconstruct ImportConfirm-like object for internal logic
+    class _Body:
+        pass
+    body = _Body()
+    body.mapping = parsed_mapping if parsed_mapping else {}
+    body.skip_duplicates = skip_duplicates
+    body.dedup_mode = dedup_mode
+    body.district_id = district_id
+    body.block_id = block_id
+
     data = await file.read()
     try:
         parsed = importer.parse_import(data, file.filename or "")
@@ -58,23 +78,87 @@ async def confirm_import(
             detail=f"File exceeds limit of {settings.max_import_rows} rows",
         )
 
-    mapping = {k: v for k, v in body.mapping.items() if v}
-    if "password" not in parsed.mapping:
+    mapping_dict = {k: v for k, v in body.mapping.items() if v}
+    # if no mapping provided, fall back to auto-detected
+    if not mapping_dict:
+        mapping_dict = dict(parsed.mapping)
+    if "password" not in parsed.mapping and "password" not in mapping_dict:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No password column mapped")
     for field in ("title", "url", "username", "password", "notes"):
-        if field not in mapping:
-            mapping[field] = parsed.mapping.get(field, "")
+        if field not in mapping_dict:
+            mapping_dict[field] = parsed.mapping.get(field, "")
 
     imported = 0
     skipped = 0
     failed = 0
-    existing = {(e.title.lower(), e.url.lower()) for e in db.query(PasswordEntry).all()}
+    marked_duplicates = 0
+
+    # Build existing key set for duplicate detection / marking
+    dedup_mode = getattr(body, "dedup_mode", "none") or "none"
+    # validate district/block if provided
+    target_district_id = getattr(body, "district_id", None)
+    target_block_id = getattr(body, "block_id", None)
+    if target_district_id is not None and db.get(District, target_district_id) is None:
+        raise HTTPException(status_code=400, detail="District not found")
+    if target_block_id is not None and db.get(Block, target_block_id) is None:
+        raise HTTPException(status_code=400, detail="Block not found")
+
+    def _key_for(row):
+        t = row.title.strip().lower()
+        u = row.url.strip().lower()
+        un = row.username.strip().lower()
+        pw = row.password  # password case-sensitive, but still normalize lower for grouping? keep case-sensitive
+        if dedup_mode == "exact":
+            return (t, u, un, pw)
+        if dedup_mode == "title_url_username":
+            return (t, u, un)
+        if dedup_mode == "title_url":
+            return (t, u)
+        return None  # "none" → no dedup key, but still mark via title_url for is_duplicate flag
+
+    # For is_duplicate flag we still want to mark duplicates on title+url (broad) even when dedup_mode=="none"
+    # So build both a strict key set and a broad key set
+    broad_existing = {(e.title.lower(), e.url.lower()) for e in db.query(PasswordEntry).all()}
+    strict_existing: set = set()
+    if dedup_mode != "none":
+        # For strict modes we need to include username/password if required; we build from DB decrypted
+        # This is O(N) decrypt - acceptable up to 50k; if too large we fallback to broad
+        try:
+            for e in db.query(PasswordEntry).all():
+                t = e.title.strip().lower()
+                u = e.url.strip().lower()
+                if dedup_mode == "exact":
+                    un = decrypt(e.username_cipher).strip().lower() if e.username_cipher else ""
+                    pw = decrypt(e.password_cipher) if e.password_cipher else ""
+                    strict_existing.add((t, u, un, pw))
+                elif dedup_mode == "title_url_username":
+                    un = decrypt(e.username_cipher).strip().lower() if e.username_cipher else ""
+                    strict_existing.add((t, u, un))
+                elif dedup_mode == "title_url":
+                    strict_existing.add((t, u))
+        except Exception:
+            strict_existing = set(broad_existing)
 
     for row in parsed.rows:
         try:
-            if body.skip_duplicates and (row.title.lower(), row.url.lower()) in existing:
+            # Determine duplicate status for marking
+            broad_key = (row.title.lower(), row.url.lower())
+            is_dup_broad = broad_key in broad_existing
+            # strict check if mode != none
+            is_dup = is_dup_broad
+            if dedup_mode != "none":
+                k = _key_for(row)
+                if k is not None:
+                    is_dup = k in strict_existing
+
+            # Skip only if explicitly asked
+            if getattr(body, "skip_duplicates", False) and is_dup and dedup_mode != "none":
                 skipped += 1
                 continue
+
+            # Mark as duplicate but still import
+            is_duplicate_flag = is_dup
+
             entry = PasswordEntry(
                 title=row.title[:255],
                 url=row.url[:1024],
@@ -83,18 +167,27 @@ async def confirm_import(
                 notes_cipher=encrypt(row.notes),
                 category=row.category,
                 owner_id=admin.id,
+                district_id=target_district_id,
+                block_id=target_block_id,
+                is_duplicate=is_duplicate_flag,
             )
             db.add(entry)
             db.flush()
-            existing.add((row.title.lower(), row.url.lower()))
+            broad_existing.add(broad_key)
+            if dedup_mode != "none":
+                k = _key_for(row)
+                if k is not None:
+                    strict_existing.add(k)
+            if is_duplicate_flag:
+                marked_duplicates += 1
             imported += 1
         except Exception:
             failed += 1
 
     db.add(AuditLog(user_id=admin.id, action="import.run",
-                    detail=f"imported={imported} skipped={skipped} failed={failed} format={parsed.detected_format}"))
+                    detail=f"imported={imported} skipped={skipped} marked_dup={marked_duplicates} failed={failed} format={parsed.detected_format}"))
     db.commit()
-    return ImportResult(imported=imported, skipped_duplicates=skipped, failed=failed)
+    return ImportResult(imported=imported, skipped_duplicates=skipped, failed=failed, marked_duplicates=marked_duplicates)
 
 
 @router.get("/export")

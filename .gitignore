@@ -1,0 +1,24 @@
+﻿# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+backend/.venv/
+*.egg-info/
+.pytest_cache/
+
+# Secrets & local DB
+backend/data/
+backend/.env
+*.db
+*.key
+
+# APK & large binaries
+*.apk
+
+# Chat export
+*.json
+
+# OS
+.DS_Store
+Thumbs.db

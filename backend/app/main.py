@@ -11,15 +11,42 @@ from . import security
 from .config import get_settings
 from .database import Base, SessionLocal, engine
 from .models import AuditLog, User
-from .routers import audit, auth, entries, import_export, users
+from .routers import audit, auth, districts, entries, import_export, users
+from sqlalchemy import inspect, text
 
 settings = get_settings()
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
+def _ensure_migrations():
+    """Lightweight SQLite/Postgres migration for added columns (for Render free deploy without alembic)."""
+    try:
+        insp = inspect(engine)
+        # users
+        if "users" in insp.get_table_names():
+            cols = {c["name"] for c in insp.get_columns("users")}
+            with engine.begin() as conn:
+                if "district_id" not in cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN district_id INTEGER"))
+                if "block_id" not in cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN block_id INTEGER"))
+        if "password_entries" in insp.get_table_names():
+            cols = {c["name"] for c in insp.get_columns("password_entries")}
+            with engine.begin() as conn:
+                if "district_id" not in cols:
+                    conn.execute(text("ALTER TABLE password_entries ADD COLUMN district_id INTEGER"))
+                if "block_id" not in cols:
+                    conn.execute(text("ALTER TABLE password_entries ADD COLUMN block_id INTEGER"))
+                if "is_duplicate" not in cols:
+                    conn.execute(text("ALTER TABLE password_entries ADD COLUMN is_duplicate BOOLEAN NOT NULL DEFAULT 0"))
+    except Exception:
+        pass  # best effort; tests use fresh DB
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    _ensure_migrations()
     seed_admin()
     yield
 
@@ -37,6 +64,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(users.router)
+    app.include_router(districts.router)
     app.include_router(entries.router)
     app.include_router(import_export.router)
     app.include_router(audit.router)

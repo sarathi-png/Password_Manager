@@ -104,10 +104,17 @@ class ApiClient {
     return user!;
   }
 
-  Future<List<VaultEntry>> listEntries({String query = '', String category = ''}) async {
+  Future<List<VaultEntry>> listEntries({String query = '', String category = '', int? districtId, int? blockId, bool? isDuplicate, String? tag, bool? isFavorite, bool? isPinned, String sort = 'title'}) async {
     final params = <String, String>{
       if (query.isNotEmpty) 'q': query,
       if (category.isNotEmpty) 'category': category,
+      if (districtId != null) 'district_id': districtId.toString(),
+      if (blockId != null) 'block_id': blockId.toString(),
+      if (isDuplicate != null) 'is_duplicate': isDuplicate.toString(),
+      if (tag != null && tag.isNotEmpty) 'tag': tag,
+      if (isFavorite != null) 'is_favorite': isFavorite.toString(),
+      if (isPinned != null) 'is_pinned': isPinned.toString(),
+      if (sort != 'title') 'sort': sort,
     };
     final uri = _uri('/api/entries').replace(queryParameters: params.isEmpty ? null : params);
     final resp = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 60));
@@ -120,5 +127,44 @@ class ApiClient {
     final resp = await http.get(_uri('/api/entries/$id'), headers: _headers).timeout(const Duration(seconds: 60));
     _check(resp);
     return VaultEntry.fromDetail(_decode(resp) as Map<String, dynamic>);
+  }
+
+  // Private per-user tags & favorites (works for employee read-only as well)
+  Future<List<String>> addTag(int entryId, String tag) async {
+    final resp = await http.post(_uri('/api/entries/$entryId/tags'), headers: _headers, body: jsonEncode({'tag': tag})).timeout(const Duration(seconds: 60));
+    _check(resp);
+    final list = _decode(resp) as List<dynamic>;
+    return list.map((e) => e.toString()).toList();
+  }
+
+  Future<List<String>> removeTag(int entryId, String tag) async {
+    final resp = await http.delete(_uri('/api/entries/$entryId/tags/$tag'), headers: _headers).timeout(const Duration(seconds: 60));
+    _check(resp);
+    final list = _decode(resp) as List<dynamic>;
+    return list.map((e) => e.toString()).toList();
+  }
+
+  Future<Map<String, dynamic>> setMeta(int entryId, {bool? isFavorite, bool? isPinned}) async {
+    final body = <String, dynamic>{};
+    if (isFavorite != null) body['is_favorite'] = isFavorite;
+    if (isPinned != null) body['is_pinned'] = isPinned;
+    final resp = await http.put(_uri('/api/entries/$entryId/meta'), headers: _headers, body: jsonEncode(body)).timeout(const Duration(seconds: 60));
+    _check(resp);
+    return _decode(resp) as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> listDistricts() async {
+    final resp = await http.get(_uri('/api/districts'), headers: _headers).timeout(const Duration(seconds: 60));
+    _check(resp);
+    final list = _decode(resp) as List<dynamic>;
+    return list.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> listBlocks({int? districtId}) async {
+    final uri = _uri('/api/blocks').replace(queryParameters: districtId != null ? {'district_id': districtId.toString()} : null);
+    final resp = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 60));
+    _check(resp);
+    final list = _decode(resp) as List<dynamic>;
+    return list.map((e) => e as Map<String, dynamic>).toList();
   }
 }

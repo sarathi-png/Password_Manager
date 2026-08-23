@@ -4,13 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../api.dart';
 import '../models.dart';
 import '../theme.dart';
 
 class DetailSheet extends StatefulWidget {
   final VaultEntry entry;
+  final ApiClient? api;
+  final VoidCallback? onChanged;
 
-  const DetailSheet({super.key, required this.entry});
+  const DetailSheet({super.key, required this.entry, this.api, this.onChanged});
 
   @override
   State<DetailSheet> createState() => _DetailSheetState();
@@ -18,12 +21,63 @@ class DetailSheet extends StatefulWidget {
 
 class _DetailSheetState extends State<DetailSheet> {
   bool _revealed = false;
+  final _tagCtrl = TextEditingController();
+  bool _savingTag = false;
+
+  @override
+  void dispose() {
+    _tagCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _copy(String text, String label) async {
     await Clipboard.setData(ClipboardData(text: text));
     HapticFeedback.mediumImpact();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label copied')));
+  }
+
+  Future<void> _addTag() async {
+    final tag = _tagCtrl.text.trim();
+    if (tag.isEmpty || widget.api == null) return;
+    setState(() => _savingTag = true);
+    try {
+      await widget.api!.addTag(widget.entry.id, tag);
+      _tagCtrl.clear();
+      if (widget.onChanged != null) widget.onChanged!();
+      // refresh entry tags by refetching
+      final fresh = await widget.api!.getEntry(widget.entry.id);
+      if (mounted) setState(() {
+        // mutate widget entry tags via copy? Instead we update local via setState hack
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tag added (private)')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+    } finally {
+      if (mounted) setState(() => _savingTag = false);
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    if (widget.api == null) return;
+    try {
+      await widget.api!.setMeta(widget.entry.id, isFavorite: !widget.entry.isFavorite);
+      if (widget.onChanged != null) widget.onChanged!();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.entry.isFavorite ? 'Removed from favorites' : 'Added to favorites')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+    }
+  }
+
+  Future<void> _togglePin() async {
+    if (widget.api == null) return;
+    try {
+      await widget.api!.setMeta(widget.entry.id, isPinned: !widget.entry.isPinned);
+      if (widget.onChanged != null) widget.onChanged!();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.entry.isPinned ? 'Unpinned' : 'Pinned to top')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+    }
   }
 
   @override
@@ -107,7 +161,60 @@ class _DetailSheetState extends State<DetailSheet> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (entry.districtName != null) Container(padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), decoration: BoxDecoration(color: AppColors.accent1.withValues(alpha:0.12), borderRadius: BorderRadius.circular(999)), child: Text(entry.districtName!, style: GoogleFonts.inter(fontSize:11, color: AppColors.accent1))),
+                      if (entry.blockName != null) Container(padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), decoration: BoxDecoration(color: AppColors.accent2.withValues(alpha:0.12), borderRadius: BorderRadius.circular(999)), child: Text(entry.blockName!, style: GoogleFonts.inter(fontSize:11, color: AppColors.accent2))),
+                      if (entry.isDuplicate) Container(padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), decoration: BoxDecoration(color: AppColors.danger.withValues(alpha:0.12), borderRadius: BorderRadius.circular(999)), child: Text('duplicate', style: GoogleFonts.inter(fontSize:11, color: AppColors.danger))),
+                      if (entry.isFavorite) const Icon(Icons.star_rounded, size: 18, color: AppColors.warning),
+                      if (entry.isPinned) const Icon(Icons.push_pin, size: 16, color: AppColors.accent2),
+                      ...entry.tags.map((t) => Container(padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), decoration: BoxDecoration(color: AppColors.success.withValues(alpha:0.12), borderRadius: BorderRadius.circular(999)), child: Text(t, style: GoogleFonts.inter(fontSize:11, color: AppColors.success)))),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // quick actions for personal meta (read-only entries but writable meta)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _toggleFavorite,
+                          icon: Icon(entry.isFavorite ? Icons.star_rounded : Icons.star_outline, size: 18),
+                          label: Text(entry.isFavorite ? 'Unfavorite' : 'Favorite'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _togglePin,
+                          icon: Icon(entry.isPinned ? Icons.push_pin : Icons.push_pin_outlined, size: 18),
+                          label: Text(entry.isPinned ? 'Unpin' : 'Pin'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _tagCtrl,
+                          decoration: const InputDecoration(hintText: 'Add private tag…', prefixIcon: Icon(Icons.label_outline, size: 18)),
+                          onSubmitted: (_) => _addTag(),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton(
+                        onPressed: _savingTag ? null : _addTag,
+                        child: _savingTag ? const SizedBox(width:16, height:16, child: CircularProgressIndicator(strokeWidth:2)) : const Text('Add'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text('Private tags are yours only — not visible to others.', style: GoogleFonts.inter(fontSize:11, color: AppColors.text3)),
+                  const SizedBox(height: 18),
                   _SecretField(
                     label: 'Username',
                     icon: Icons.person_outline,
@@ -164,7 +271,8 @@ class _DetailSheetState extends State<DetailSheet> {
                   const SizedBox(height: 20),
                   Center(
                     child: Text(
-                      'Read-only · managed by your administrator',
+                      'Read-only · managed by your administrator · tags & pins are private to you',
+                      textAlign: TextAlign.center,
                       style: GoogleFonts.inter(fontSize: 11.5, color: AppColors.text3),
                     ),
                   ),

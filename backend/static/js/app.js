@@ -6,7 +6,10 @@ const state = {
   entries: [],
   users: [],
   audit: [],
-  filters: { q: "", category: "" },
+  districts: [],
+  blocks: [],
+  selectedIds: new Set(),
+  filters: { q: "", category: "", district_id: "", block_id: "", is_duplicate: "", tag: "", is_favorite: false, sort: "title" },
   searchTimer: null,
 };
 
@@ -232,6 +235,7 @@ function shell(title, subtitle, content, activeNav) {
         <button class="nav-item ${activeNav === "vault" ? "active" : ""}" data-nav="vault">${ICONS.vault}<span>Vault</span></button>
         <button class="nav-item ${activeNav === "users" ? "active" : ""}" data-nav="users">${ICONS.users}<span>Users</span></button>
         <button class="nav-item ${activeNav === "audit" ? "active" : ""}" data-nav="audit">${ICONS.log}<span>Audit log</span></button>
+        <button class="nav-item ${activeNav === "districts" ? "active" : ""}" data-nav="districts">${ICONS.box}<span>Districts</span></button>
         <div class="sidebar-footer">
           <div class="user-chip">
             <div class="avatar">${escapeHtml((state.user?.username || "?").slice(0, 2))}</div>
@@ -276,6 +280,12 @@ async function loadEntries() {
   const params = new URLSearchParams();
   if (state.filters.q) params.set("q", state.filters.q);
   if (state.filters.category) params.set("category", state.filters.category);
+  if (state.filters.district_id) params.set("district_id", state.filters.district_id);
+  if (state.filters.block_id) params.set("block_id", state.filters.block_id);
+  if (state.filters.is_duplicate) params.set("is_duplicate", state.filters.is_duplicate);
+  if (state.filters.tag) params.set("tag", state.filters.tag);
+  if (state.filters.is_favorite) params.set("is_favorite", "true");
+  if (state.filters.sort && state.filters.sort !== "title") params.set("sort", state.filters.sort);
   state.entries = await api(`/api/entries?${params}`);
 }
 
@@ -303,14 +313,36 @@ function renderVault() {
         <div class="stat-label">Top category</div>
         <div class="stat-value" style="font-size:1.5rem;padding-top:8px">${stats.topCategory}</div>
       </div>
+      <div class="bento-card bento-sm">
+        <div class="icon-bubble" style="background:#F87171">${ICONS.copy}</div>
+        <div class="stat-label">Duplicates</div>
+        <div class="stat-value">${stats.dup}</div>
+        <div class="stat-delta">marked, not skipped</div>
+      </div>
     </div>
 
     <div class="toolbar">
-      <div class="search-box">${ICONS.search}<input id="search" placeholder="Search by name or URL…" value="${escapeHtml(state.filters.q)}" /></div>
+      <div class="search-box">${ICONS.search}<input id="search" placeholder="Search name/URL/tag… (smart)" value="${escapeHtml(state.filters.q)}" /></div>
+      <input id="tag-search" placeholder="Tag" value="${escapeHtml(state.filters.tag)}" style="max-width:140px" class="input" />
       <button class="btn btn-primary" id="import-btn">${ICONS.up} Import</button>
       <button class="btn btn-ghost" id="export-csv-btn">${ICONS.down} CSV</button>
       <button class="btn btn-ghost" id="export-xlsx-btn">${ICONS.down} Excel</button>
       <button class="btn btn-ghost" id="add-btn">${ICONS.plus} New entry</button>
+    </div>
+    <div class="toolbar" style="margin-top:10px">
+      <select id="filter-district" class="input" style="max-width:160px"><option value="">All districts</option>${state.districts.map(d=>`<option value="${d.id}" ${state.filters.district_id==d.id?"selected":""}>${escapeHtml(d.name)}</option>`).join("")}</select>
+      <select id="filter-block" class="input" style="max-width:160px"><option value="">All blocks</option>${state.blocks.filter(b=>!state.filters.district_id || b.district_id==state.filters.district_id).map(b=>`<option value="${b.id}" ${state.filters.block_id==b.id?"selected":""}>${escapeHtml(b.name)}</option>`).join("")}</select>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="filter-dup" ${state.filters.is_duplicate?"checked":""}/> Duplicates</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="filter-fav" ${state.filters.is_favorite?"checked":""}/> Favorites</label>
+      <select id="filter-sort" class="input" style="max-width:140px"><option value="title" ${state.filters.sort==="title"?"selected":""}>Sort: Title</option><option value="recent" ${state.filters.sort==="recent"?"selected":""}>Recent</option><option value="favorite" ${state.filters.sort==="favorite"?"selected":""}>Pinned first</option></select>
+      <button class="btn btn-ghost" id="clear-filters">Clear</button>
+    </div>
+    <div id="bulk-bar" style="display:${state.selectedIds.size?"flex":"none"};gap:8px;align-items:center;margin:12px 0;padding:10px;background:var(--surface-2);border-radius:10px">
+      <span>${state.selectedIds.size} selected</span>
+      <select id="bulk-district" class="input" style="max-width:140px"><option value="">District</option>${state.districts.map(d=>`<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("")}</select>
+      <select id="bulk-block" class="input" style="max-width:140px"><option value="">Block</option>${state.blocks.map(b=>`<option value="${b.id}">${escapeHtml(b.name)}</option>`).join("")}</select>
+      <button class="btn btn-primary" id="bulk-assign">Assign</button>
+      <button class="btn btn-ghost" id="bulk-clear">Clear</button>
     </div>
 
     <div class="chip-row">
@@ -320,7 +352,7 @@ function renderVault() {
 
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Name</th><th>URL</th><th>Username</th><th>Category</th><th>Updated</th><th></th></tr></thead>
+        <thead><tr><th><input type="checkbox" id="select-all" /></th><th>Name</th><th>URL</th><th>Scope</th><th>Tags</th><th>Category</th><th>Updated</th><th></th></tr></thead>
         <tbody id="entries-body"></tbody>
       </table>
       <div class="empty-state" id="entries-empty" style="display:none">
@@ -339,12 +371,14 @@ function vaultStats() {
   const week = Date.now() - 7 * 86400000;
   const recent = state.entries.filter((e) => new Date(e.updated_at).getTime() > week).length;
   const counts = {};
-  state.entries.forEach((e) => { counts[e.category] = (counts[e.category] || 0) + 1; });
+  let dup = 0;
+  state.entries.forEach((e) => { counts[e.category] = (counts[e.category] || 0) + 1; if(e.is_duplicate) dup++; });
   const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
   return {
     total: state.entries.length,
     categories: Object.keys(counts).length,
     recent,
+    dup,
     topCategory: top ? `${top[0]} (${top[1]})` : "—",
   };
 }
@@ -359,10 +393,12 @@ function renderEntryRows() {
   }
   empty.style.display = "none";
   body.innerHTML = state.entries.map((e) => `
-    <tr>
-      <td class="strong">${escapeHtml(e.title)}</td>
+    <tr style="${e.is_duplicate?"background:rgba(248,113,113,0.06)":""}">
+      <td><input type="checkbox" class="row-check" data-id="${e.id}" ${state.selectedIds.has(e.id)?"checked":""}/></td>
+      <td class="strong">${escapeHtml(e.title)} ${e.is_duplicate?`<span class="pill red" style="margin-left:6px">dup</span>`:""} ${e.is_favorite?"★":""} ${e.is_pinned?"📌":""}</td>
       <td>${escapeHtml(hostOf(e.url))}</td>
-      <td>${escapeHtml(e.username || "—")}</td>
+      <td>${e.district_name?`<span class="pill violet">${escapeHtml(e.district_name)}</span>`:"<span class=\"pill gray\">—</span>"} ${e.block_name?`<span class="pill cyan">${escapeHtml(e.block_name)}</span>`:""}</td>
+      <td>${(e.tags||[]).map(t=>`<span class="pill green" style="margin:2px">${escapeHtml(t)}</span>`).join("") || "—"}</td>
       <td>${pillFor(e.category)}</td>
       <td>${timeAgo(e.updated_at)}</td>
       <td>
@@ -377,15 +413,38 @@ function renderEntryRows() {
   body.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => viewEntry(Number(b.dataset.view))));
   body.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => openEntryForm(Number(b.dataset.edit))));
   body.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => confirmDelete(Number(b.dataset.del))));
+  body.querySelectorAll(".row-check").forEach((c)=> c.addEventListener("change", (e)=>{ const id=Number(e.target.dataset.id); if(e.target.checked) state.selectedIds.add(id); else state.selectedIds.delete(id); document.getElementById("bulk-bar").style.display=state.selectedIds.size?"flex":"none"; }));
+
 }
 
 function bindVaultEvents() {
   const search = document.getElementById("search");
+  const tagSearch = document.getElementById("tag-search");
+  const districtSel = document.getElementById("filter-district");
+  const blockSel = document.getElementById("filter-block");
+  const dupChk = document.getElementById("filter-dup");
+  const favChk = document.getElementById("filter-fav");
+  const sortSel = document.getElementById("filter-sort");
+  const clearBtn = document.getElementById("clear-filters");
   search.addEventListener("input", debounce(async () => {
     state.filters.q = search.value.trim();
     await loadEntries();
     renderEntryRows();
   }, 280));
+  if(tagSearch) tagSearch.addEventListener("input", debounce(async()=>{ state.filters.tag=tagSearch.value.trim(); await loadEntries(); renderEntryRows();},300));
+  if(districtSel) districtSel.addEventListener("change", async()=>{ state.filters.district_id=districtSel.value; state.filters.block_id=""; await loadEntries(); renderVault(); });
+  if(blockSel) blockSel.addEventListener("change", async()=>{ state.filters.block_id=blockSel.value; await loadEntries(); renderEntryRows(); });
+  if(dupChk) dupChk.addEventListener("change", async()=>{ state.filters.is_duplicate=dupChk.checked?"true":""; await loadEntries(); renderEntryRows(); });
+  if(favChk) favChk.addEventListener("change", async()=>{ state.filters.is_favorite=favChk.checked; await loadEntries(); renderEntryRows(); });
+  if(sortSel) sortSel.addEventListener("change", async()=>{ state.filters.sort=sortSel.value; await loadEntries(); renderEntryRows(); });
+  if(clearBtn) clearBtn.addEventListener("click", async()=>{ state.filters={q:"",category:"",district_id:"",block_id:"",is_duplicate:"",tag:"",is_favorite:false,sort:"title"}; await loadEntries(); renderVault(); });
+  const bulkDistrict=document.getElementById("bulk-district"); const bulkBlock=document.getElementById("bulk-block"); const bulkAssign=document.getElementById("bulk-assign"); const bulkClear=document.getElementById("bulk-clear"); const selectAll=document.getElementById("select-all");
+  if(bulkAssign) bulkAssign.addEventListener("click", async()=>{
+    const ids=[...state.selectedIds]; if(!ids.length) return; const did=bulkDistrict.value?Number(bulkDistrict.value):null; const bid=bulkBlock.value?Number(bulkBlock.value):null; try{ await api(`/api/entries/bulk-assign?district_id=${did||""}&block_id=${bid||""}`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ids)}); toast(`Assigned ${ids.length} entries`,"success"); state.selectedIds.clear(); await loadEntries(); renderEntryRows(); }catch(e){toast(e.message,"error");}
+  });
+  if(bulkClear) bulkClear.addEventListener("click", ()=>{ state.selectedIds.clear(); renderEntryRows(); document.getElementById("bulk-bar").style.display="none";});
+  if(selectAll) selectAll.addEventListener("change", (e)=>{ if(e.target.checked){ state.entries.forEach(en=>state.selectedIds.add(en.id));} else state.selectedIds.clear(); renderEntryRows();});
+
 
   document.querySelectorAll("[data-cat]").forEach((chip) => {
     chip.addEventListener("click", async () => {
@@ -440,7 +499,8 @@ async function viewEntry(id) {
         </div>
       </div>
       <div class="field"><label>Notes</label><div style="color:var(--text-2);white-space:pre-wrap">${escapeHtml(e.notes || "—")}</div></div>
-      <div class="field">${pillFor(e.category)}</div>
+      <div class="field" style="display:flex;gap:6px;flex-wrap:wrap">${e.district_name?`<span class="pill violet">${escapeHtml(e.district_name)}</span>`:""} ${e.block_name?`<span class="pill cyan">${escapeHtml(e.block_name)}</span>`:""} ${e.is_duplicate?`<span class="pill red">duplicate</span>`:""} ${pillFor(e.category)} ${(e.tags||[]).map(t=>`<span class="pill green">${escapeHtml(t)}</span>`).join("")}</div>
+      <div class="field" style="display:flex;gap:8px"><input id="new-tag" placeholder="Add private tag" class="input" style="flex:1"/><button class="btn btn-ghost" id="add-tag-btn">Add tag</button><button class="btn btn-ghost" id="fav-btn">${e.is_favorite?"★ Unfavorite":"☆ Favorite"}</button></div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-close="1">Close</button>
         <button class="btn btn-primary" id="edit-from-view">Edit</button>
@@ -453,6 +513,8 @@ async function viewEntry(id) {
     });
     document.getElementById("copy-pw").addEventListener("click", () => copyText(e.password, "Password copied"));
     document.getElementById("copy-username").addEventListener("click", () => copyText(e.username, "Username copied"));
+    const tagBtn=document.getElementById("add-tag-btn"); if(tagBtn) tagBtn.addEventListener("click", async()=>{ const v=document.getElementById("new-tag").value.trim(); if(!v) return; try{ await api(`/api/entries/${e.id}/tags`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({tag:v})}); toast("Tag added","success"); closeModal(); viewEntry(e.id); }catch(ex){toast(ex.message,"error");}});
+    const favBtn=document.getElementById("fav-btn"); if(favBtn) favBtn.addEventListener("click", async()=>{ try{ await api(`/api/entries/${e.id}/meta`,{method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({is_favorite: !e.is_favorite})}); toast(e.is_favorite?"Unfavorited":"Favorited","success"); closeModal(); viewEntry(e.id);}catch(ex){toast(ex.message,"error");}});
     document.getElementById("edit-from-view").addEventListener("click", () => { closeModal(); openEntryForm(e.id); });
   } catch (ex) { toast(ex.message, "error"); }
 }
@@ -478,6 +540,10 @@ function openEntryForm(entryId = null) {
         <div class="field"><label>Category</label>
           <select class="input" id="f-category">${CATEGORIES.map((c) => `<option value="${c}" ${existing?.category === c ? "selected" : ""}>${c}</option>`).join("")}</select>
         </div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>District</label><select class="input" id="f-district"><option value="">— Unassigned</option>${state.districts.map(d=>`<option value="${d.id}" ${existing?.district_id===d.id?"selected":""}>${escapeHtml(d.name)}</option>`).join("")}</select></div>
+        <div class="field"><label>Block</label><select class="input" id="f-block"><option value="">— Unassigned</option>${state.blocks.map(b=>`<option value="${b.id}" ${existing?.block_id===b.id?"selected":""}>${escapeHtml(b.name)}</option>`).join("")}</select></div>
       </div>
       <div class="field">
         <label>Password</label>
@@ -514,6 +580,8 @@ function openEntryForm(entryId = null) {
       password: document.getElementById("f-password").value,
       notes: document.getElementById("f-notes").value.trim(),
       category: document.getElementById("f-category").value,
+      district_id: document.getElementById("f-district").value?Number(document.getElementById("f-district").value):null,
+      block_id: document.getElementById("f-block").value?Number(document.getElementById("f-block").value):null,
     };
     if (!payload.title || !payload.password) {
       err.textContent = "Title and password are required";
@@ -653,7 +721,9 @@ function openImportWizard() {
     setStep(2);
     const body = document.getElementById("wizard-body");
     body.innerHTML = `
-      <div class="guide-box" style="font-size:13.5px;color:var(--text-3)">Supports <strong style="color:var(--text-1)">.csv</strong> from Chrome, Edge, Firefox, Bitwarden, 1Password — and <strong style="color:var(--text-1)">.xlsx</strong> spreadsheets. Columns are auto-detected.</div>
+      <div class="guide-box" style="font-size:13.5px;color:var(--text-3)">Supports <strong style="color:var(--text-1)">.csv</strong> from Chrome, Edge, Firefox, Bitwarden, 1Password — and <strong style="color:var(--text-1)">.xlsx</strong> spreadsheets. Duplicates are <b>imported and marked</b> (not skipped) — delete via filter if needed.</div>
+      <div style="display:flex;gap:10px;margin:12px 0"><select id="wiz-district" class="input" style="flex:1"><option value="">— Assign district (optional)</option>${state.districts.map(d=>`<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("")}</select><select id="wiz-block" class="input" style="flex:1"><option value="">— Assign block (optional)</option>${state.blocks.map(b=>`<option value="${b.id}">${escapeHtml(b.name)}</option>`).join("")}</select></div>
+      <div style="display:flex;gap:10px;margin-bottom:12px"><label style="font-size:13px;display:flex;align-items:center;gap:6px">Dedup mode <select id="wiz-dedup" class="input" style="width:140px"><option value="none">Import all</option><option value="title_url">Title+URL</option><option value="exact">Exact</option></select></label><label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="wiz-skip" /> Skip (old)</label></div>
       <div class="dropzone" id="dropzone">
         <div class="dz-icon">📂</div>
         <div>Drag & drop your file here, or <strong>click to browse</strong></div>
@@ -718,6 +788,7 @@ function openImportWizard() {
       const form = new FormData();
       form.append("file", p.file);
       form.append("mapping", JSON.stringify(p.mapping));
+      const did=document.getElementById("wiz-district")?.value; const bid=document.getElementById("wiz-block")?.value; const dedup=document.getElementById("wiz-dedup")?.value||"none"; const skip=document.getElementById("wiz-skip")?.checked; if(did) form.append("district_id", did); if(bid) form.append("block_id", bid); form.append("dedup_mode", dedup); form.append("skip_duplicates", skip?"true":"false");
       try {
         const res = await api("/api/import/confirm", { method: "POST", body: form });
         closeModal();
@@ -739,7 +810,15 @@ async function loadUsers() {
   state.users = await api("/api/users");
 }
 
-function renderUsers() {
+async function loadDistricts() {
+  try { state.districts = await api("/api/districts"); } catch(e){ state.districts=[]; }
+}
+async function loadBlocks() {
+  try { state.blocks = await api("/api/blocks"); } catch(e){ state.blocks=[]; }
+}
+
+async function renderUsers() {
+  await Promise.all([loadDistricts(), loadBlocks()]);
   document.getElementById("app").innerHTML = shell(
     "Users",
     "Admins manage the vault; employees can only view credentials from the mobile app.",
@@ -747,6 +826,7 @@ function renderUsers() {
     <div class="toolbar">
       <button class="btn btn-primary" id="add-user-btn">${ICONS.plus} Add user</button>
     </div>
+    <div style="font-size:13px;color:var(--text-3);margin:8px 0">District employee → sees District+Blocks; Block employee → sees only its Block. Assign via add/edit.</div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr></thead>
@@ -765,7 +845,7 @@ function renderUserRows() {
   body.innerHTML = state.users.map((u) => `
     <tr>
       <td class="strong">${escapeHtml(u.username)}</td>
-      <td><span class="role-badge" style="color:${u.role === "admin" ? "#A78BFA" : "#67E8F9"}">${u.role}</span></td>
+      <td><span class="role-badge" style="color:${u.role === "admin" ? "#A78BFA" : "#67E8F9"}">${u.role}</span> ${u.district_name?`<span class="pill violet">${escapeHtml(u.district_name)}</span>`:""} ${u.block_name?`<span class="pill cyan">${escapeHtml(u.block_name)}</span>`:""}</td>
       <td>${u.is_active ? '<span class="pill green">Active</span>' : '<span class="pill red">Disabled</span>'}</td>
       <td>${new Date(u.created_at).toLocaleDateString()}</td>
       <td>
@@ -796,6 +876,8 @@ function openUserForm() {
           <option value="admin">Admin — full web console access</option>
         </select>
       </div>
+      <div class="form-row"><div class="field"><label>District</label><select class="input" id="u-district"><option value="">— None (legacy, sees all)</option>${state.districts.map(d=>`<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("")}</select></div><div class="field"><label>Block</label><select class="input" id="u-block"><option value="">— None (district-level if district set)</option>${state.blocks.map(b=>`<option value="${b.id}">${escapeHtml(b.name)} — ${escapeHtml(state.districts.find(d=>d.id===b.district_id)?.name||"")}</option>`).join("")}</select></div></div>
+      <div style="font-size:12px;color:var(--text-3)">Block employee sees only its Block; District employee sees District+Blocks.</div>
       <div class="modal-foot">
         <button type="button" class="btn btn-ghost" data-close="1">Cancel</button>
         <button type="submit" class="btn btn-primary">Create user</button>
@@ -812,6 +894,8 @@ function openUserForm() {
           username: document.getElementById("u-name").value.trim(),
           password: document.getElementById("u-pass").value,
           role: document.getElementById("u-role").value,
+          district_id: document.getElementById("u-district").value?Number(document.getElementById("u-district").value):null,
+          block_id: document.getElementById("u-block").value?Number(document.getElementById("u-block").value):null,
         }),
       });
       toast("User created", "success");
@@ -925,6 +1009,25 @@ function renderAudit() {
     </tr>`).join("") || '<tr><td colspan="5" class="empty-state">No activity yet</td></tr>';
 }
 
+/* ---------------- Districts view ---------------- */
+function renderDistricts() {
+  document.getElementById("app").innerHTML = shell(
+    "Districts & Blocks",
+    "Admin creates districts and blocks — then assigns entries and users to a scope.",
+    `<div class="toolbar"><button class="btn btn-primary" id="add-district">+ District</button> <button class="btn btn-ghost" id="add-block">+ Block</button></div>
+     <div class="table-wrap"><h3 style="margin:12px">Districts</h3><table><thead><tr><th>Name</th><th>Blocks</th><th></th></tr></thead><tbody id="district-body"></tbody></table></div>
+     <div class="table-wrap" style="margin-top:16px"><h3 style="margin:12px">Blocks</h3><table><thead><tr><th>Name</th><th>District</th><th></th></tr></thead><tbody id="block-body"></tbody></table></div>`,
+    "districts"
+  );
+  bindShell();
+  const dBody=document.getElementById("district-body"); dBody.innerHTML=state.districts.map(d=>`<tr><td>${escapeHtml(d.name)}</td><td>${state.blocks.filter(b=>b.district_id===d.id).length}</td><td><button class="mini-btn danger" data-del-district="${d.id}">${ICONS.trash}</button></td></tr>`).join("")||"<tr><td colspan=3>—</td></tr>";
+  const bBody=document.getElementById("block-body"); bBody.innerHTML=state.blocks.map(b=>`<tr><td>${escapeHtml(b.name)}</td><td>${escapeHtml(state.districts.find(d=>d.id===b.district_id)?.name||"")}</td><td><button class="mini-btn danger" data-del-block="${b.id}">${ICONS.trash}</button></td></tr>`).join("")||"<tr><td colspan=3>—</td></tr>";
+  dBody.querySelectorAll("[data-del-district]").forEach(b=> b.addEventListener("click", async()=>{ try{ await api(`/api/districts/${b.dataset.delDistrict}`,{method:"DELETE"}); toast("District deleted","success"); await loadDistricts(); await loadBlocks(); renderDistricts();}catch(e){toast(e.message,"error");}}));
+  bBody.querySelectorAll("[data-del-block]").forEach(b=> b.addEventListener("click", async()=>{ try{ await api(`/api/blocks/${b.dataset.delBlock}`,{method:"DELETE"}); toast("Block deleted","success"); await loadBlocks(); renderDistricts();}catch(e){toast(e.message,"error");}}));
+  document.getElementById("add-district").addEventListener("click", ()=>{ openModal(`<div class="modal-head"><div class="modal-title">Add district</div><button class="modal-close" data-close="1">×</button></div><div class="field"><label>Name</label><input class="input" id="d-name" /></div><div class="modal-foot"><button class="btn btn-ghost" data-close="1">Cancel</button><button class="btn btn-primary" id="d-create">Create</button></div>`); document.getElementById("d-create").addEventListener("click", async()=>{ const n=document.getElementById("d-name").value.trim(); if(!n) return; try{ await api("/api/districts",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({name:n})}); toast("District created","success"); closeModal(); await loadDistricts(); renderDistricts(); }catch(e){toast(e.message,"error");}});});
+  document.getElementById("add-block").addEventListener("click", ()=>{ openModal(`<div class="modal-head"><div class="modal-title">Add block</div><button class="modal-close" data-close="1">×</button></div><div class="field"><label>District</label><select class="input" id="b-district">${state.districts.map(d=>`<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("")}</select></div><div class="field"><label>Block name</label><input class="input" id="b-name" /></div><div class="modal-foot"><button class="btn btn-ghost" data-close="1">Cancel</button><button class="btn btn-primary" id="b-create">Create</button></div>`); document.getElementById("b-create").addEventListener("click", async()=>{ const n=document.getElementById("b-name").value.trim(); const did=Number(document.getElementById("b-district").value); if(!n) return; try{ await api("/api/blocks",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({name:n, district_id:did})}); toast("Block created","success"); closeModal(); await loadBlocks(); renderDistricts(); }catch(e){toast(e.message,"error");}});});
+}
+
 /* ---------------- Router ---------------- */
 
 async function router() {
@@ -942,7 +1045,7 @@ async function router() {
   if (!state.user || state.user.role !== "admin") return renderLogin();
 
   if (route.startsWith("/vault")) {
-    await loadEntries();
+    await Promise.all([loadDistricts(), loadBlocks(), loadEntries()]);
     renderVault();
     renderEntryRows();
   } else if (route.startsWith("/users")) {
@@ -951,6 +1054,9 @@ async function router() {
   } else if (route.startsWith("/audit")) {
     await Promise.all([loadUsers(), loadAudit()]);
     renderAudit();
+  } else if (route.startsWith("/districts")) {
+    await Promise.all([loadDistricts(), loadBlocks()]);
+    renderDistricts();
   }
 }
 

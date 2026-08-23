@@ -19,10 +19,15 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _searchCtrl = TextEditingController();
+  final _tagCtrl = TextEditingController();
   List<VaultEntry> _entries = [];
   bool _loading = true;
   String? _error;
   String _category = '';
+  bool _showDup = false;
+  bool _showFav = false;
+  bool _showPinned = false;
+  String _sort = 'title'; // title | recent | favorite
   Timer? _debounce;
 
   @override
@@ -35,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _debounce?.cancel();
     _searchCtrl.dispose();
+    _tagCtrl.dispose();
     super.dispose();
   }
 
@@ -44,7 +50,15 @@ class _HomeScreenState extends State<HomeScreen> {
       _error = null;
     });
     try {
-      final entries = await widget.api.listEntries(query: _searchCtrl.text.trim(), category: _category);
+      final entries = await widget.api.listEntries(
+        query: _searchCtrl.text.trim(),
+        category: _category,
+        tag: _tagCtrl.text.trim().isEmpty ? null : _tagCtrl.text.trim(),
+        isDuplicate: _showDup ? true : null,
+        isFavorite: _showFav ? true : null,
+        isPinned: _showPinned ? true : null,
+        sort: _sort,
+      );
       if (!mounted) return;
       setState(() {
         _entries = entries;
@@ -84,8 +98,10 @@ class _HomeScreenState extends State<HomeScreen> {
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         barrierColor: Colors.black.withValues(alpha: 0.6),
-        builder: (_) => DetailSheet(entry: detail),
+        builder: (_) => DetailSheet(api: widget.api, entry: detail, onChanged: _load),
       );
+      // refresh to get updated tags/fav after sheet closed
+      if (mounted) _load();
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -94,6 +110,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = widget.api.user;
+    final scopeLabel = user?.blockName != null
+        ? '${user!.districtName ?? ""} › ${user.blockName}'
+        : user?.districtName ?? (user?.role == 'admin' ? 'Admin' : 'Workspace');
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(gradient: AppGradients.background),
@@ -111,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Text('The Vault', style: Theme.of(context).textTheme.headlineSmall),
                           Text(
-                            '${_entries.length} credential${_entries.length == 1 ? '' : 's'} · read-only',
+                            '${_entries.length} credential${_entries.length == 1 ? '' : 's'} · $scopeLabel · read-only',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
@@ -138,15 +158,71 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                child: TextField(
-                  controller: _searchCtrl,
-                  onChanged: _onSearchChanged,
-                  textInputAction: TextInputAction.search,
-                  decoration: const InputDecoration(
-                    hintText: 'Search by name or URL…',
-                    prefixIcon: Icon(Icons.search, color: AppColors.text3),
-                  ),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchCtrl,
+                        onChanged: _onSearchChanged,
+                        textInputAction: TextInputAction.search,
+                        decoration: const InputDecoration(
+                          hintText: 'Search name, URL, tag…',
+                          prefixIcon: Icon(Icons.search, color: AppColors.text3),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 110,
+                      child: TextField(
+                        controller: _tagCtrl,
+                        onChanged: _onSearchChanged,
+                        decoration: const InputDecoration(
+                          hintText: 'Tag',
+                          prefixIcon: Icon(Icons.label_outline, size: 18, color: AppColors.text3),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Smart filters
+              SizedBox(
+                height: 38,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  children: [
+                    _SmartChip(label: 'Favorites', selected: _showFav, icon: Icons.star_rounded, onTap: () { setState(() => _showFav = !_showFav); _load(); }),
+                    _SmartChip(label: 'Pinned', selected: _showPinned, icon: Icons.push_pin, onTap: () { setState(() => _showPinned = !_showPinned); _load(); }),
+                    _SmartChip(label: 'Duplicates', selected: _showDup, icon: Icons.copy_rounded, onTap: () { setState(() => _showDup = !_showDup); _load(); }),
+                    _SmartChip(
+                        label: _sort == 'title' ? 'Sort: Title' : _sort == 'recent' ? 'Sort: Recent' : 'Sort: Pinned',
+                        selected: _sort != 'title',
+                        icon: Icons.sort_rounded,
+                        onTap: () {
+                          setState(() => _sort = _sort == 'title' ? 'recent' : _sort == 'recent' ? 'favorite' : 'title');
+                          _load();
+                        }),
+                    if (_category.isNotEmpty || _showFav || _showDup || _showPinned || _tagCtrl.text.isNotEmpty)
+                      _SmartChip(
+                          label: 'Clear',
+                          selected: false,
+                          icon: Icons.clear_rounded,
+                          onTap: () {
+                            setState(() {
+                              _category = '';
+                              _showFav = false;
+                              _showDup = false;
+                              _showPinned = false;
+                              _tagCtrl.clear();
+                              _searchCtrl.clear();
+                              _sort = 'title';
+                            });
+                            _load();
+                          }),
+                  ],
                 ),
               ),
               SizedBox(
@@ -208,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 12),
             Text('No entries found', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
-            Text('Try a different search or category', style: Theme.of(context).textTheme.bodySmall),
+            Text('Try smart search: name, tag or category', style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
       );
@@ -224,6 +300,42 @@ class _HomeScreenState extends State<HomeScreen> {
         itemBuilder: (context, index) => _EntryCard(
           entry: _entries[index],
           onTap: () => _openEntry(_entries[index]),
+        ),
+      ),
+    );
+  }
+}
+
+class _SmartChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final IconData icon;
+  final VoidCallback onTap;
+  const _SmartChip({required this.label, required this.selected, required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: selected ? AppColors.accent1.withValues(alpha: 0.18) : AppColors.surface1,
+            border: Border.all(color: selected ? AppColors.accent1 : AppColors.borderStrong),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: selected ? AppColors.accent2 : AppColors.text3),
+              const SizedBox(width: 4),
+              Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: selected ? AppColors.text1 : AppColors.text2)),
+            ],
+          ),
         ),
       ),
     );
@@ -292,7 +404,8 @@ class _EntryCard extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: entry.isDuplicate ? AppColors.danger.withValues(alpha: 0.35) : AppColors.border),
+            color: entry.isDuplicate ? AppColors.danger.withValues(alpha: 0.04) : null,
           ),
           child: Row(
             children: [
@@ -317,19 +430,28 @@ class _EntryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      entry.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.text1),
-                    ),
+                    Row(children: [
+                      Expanded(child: Text(entry.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.text1))),
+                      if (entry.isPinned) const Padding(padding: EdgeInsets.only(left:4), child: Icon(Icons.push_pin, size: 14, color: AppColors.accent2)),
+                      if (entry.isFavorite) const Padding(padding: EdgeInsets.only(left:2), child: Icon(Icons.star_rounded, size: 16, color: AppColors.warning)),
+                      if (entry.isDuplicate) Container(margin: const EdgeInsets.only(left:6), padding: const EdgeInsets.symmetric(horizontal:6, vertical:2), decoration: BoxDecoration(color: AppColors.danger.withValues(alpha:0.12), borderRadius: BorderRadius.circular(6)), child: Text('dup', style: GoogleFonts.inter(fontSize:10, fontWeight: FontWeight.w700, color: AppColors.danger))),
+                    ]),
                     const SizedBox(height: 3),
-                    Text(
-                      entry.host.isEmpty ? '—' : entry.host,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(fontSize: 12.5, color: AppColors.text3),
-                    ),
+                    Row(children: [
+                      Expanded(child: Text(entry.host.isEmpty ? '—' : entry.host, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12.5, color: AppColors.text3))),
+                      if (entry.tags.isNotEmpty)
+                        Expanded(
+                          child: Text(entry.tags.take(2).join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11, color: AppColors.success)),
+                        ),
+                    ]),
+                    if (entry.districtName != null || entry.blockName != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top:3),
+                        child: Row(children: [
+                          if (entry.districtName != null) Container(padding: const EdgeInsets.symmetric(horizontal:6, vertical:2), decoration: BoxDecoration(color: AppColors.accent1.withValues(alpha:0.12), borderRadius: BorderRadius.circular(6)), child: Text(entry.districtName!, style: GoogleFonts.inter(fontSize:10, color: AppColors.accent1))),
+                          if (entry.blockName != null) Container(margin: const EdgeInsets.only(left:4), padding: const EdgeInsets.symmetric(horizontal:6, vertical:2), decoration: BoxDecoration(color: AppColors.accent2.withValues(alpha:0.12), borderRadius: BorderRadius.circular(6)), child: Text(entry.blockName!, style: GoogleFonts.inter(fontSize:10, color: AppColors.accent2))),
+                        ]),
+                      ),
                   ],
                 ),
               ),
@@ -341,8 +463,7 @@ class _EntryCard extends StatelessWidget {
                 ),
                 child: Text(
                   entry.category,
-                  style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: accent,
-                      letterSpacing: 0.4),
+                  style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: accent, letterSpacing: 0.4),
                 ),
               ),
               const SizedBox(width: 4),
@@ -393,4 +514,3 @@ class _SkeletonCard extends StatelessWidget {
     );
   }
 }
-

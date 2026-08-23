@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from .. import security
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import AuditLog, User
+from ..models import AuditLog, Block, District, User
 from ..schemas import LoginRequest, TokenResponse, UserOut
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -28,5 +28,13 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)):
-    return user
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # enrich with district/block names
+    out = UserOut.model_validate(user)
+    if user.district_id:
+        d = db.get(District, user.district_id)
+        out.district_name = d.name if d else None
+    if user.block_id:
+        b = db.get(Block, user.block_id)
+        out.block_name = b.name if b else None
+    return out

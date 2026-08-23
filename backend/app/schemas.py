@@ -11,6 +11,30 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class DistrictOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    created_at: object
+
+
+class DistrictCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+
+
+class BlockOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    district_id: int
+    created_at: object
+
+
+class BlockCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    district_id: int
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -18,18 +42,26 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     created_at: object
+    district_id: int | None = None
+    block_id: int | None = None
+    district_name: str | None = None
+    block_name: str | None = None
 
 
 class UserCreate(BaseModel):
     username: str = Field(min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_.-]+$")
     password: str = Field(min_length=8, max_length=256)
     role: str = Field(default="employee", pattern=r"^(admin|employee)$")
+    district_id: int | None = None
+    block_id: int | None = None
 
 
 class UserUpdate(BaseModel):
     password: str | None = Field(default=None, min_length=8, max_length=256)
     role: str | None = Field(default=None, pattern=r"^(admin|employee)$")
     is_active: bool | None = None
+    district_id: int | None = None
+    block_id: int | None = None
 
 
 class EntryIn(BaseModel):
@@ -39,6 +71,8 @@ class EntryIn(BaseModel):
     password: str = Field(min_length=1, max_length=2048)
     notes: str = Field(default="", max_length=4096)
     category: str = Field(default="other", max_length=32)
+    district_id: int | None = None
+    block_id: int | None = None
 
 
 class EntryOut(BaseModel):
@@ -50,8 +84,16 @@ class EntryOut(BaseModel):
     password: str
     notes: str
     category: str
+    district_id: int | None = None
+    block_id: int | None = None
+    district_name: str | None = None
+    block_name: str | None = None
+    is_duplicate: bool = False
     created_at: object
     updated_at: object
+    tags: list[str] = Field(default_factory=list)
+    is_favorite: bool = False
+    is_pinned: bool = False
 
 
 class EntrySummary(BaseModel):
@@ -60,6 +102,14 @@ class EntrySummary(BaseModel):
     title: str
     url: str
     category: str
+    district_id: int | None = None
+    block_id: int | None = None
+    district_name: str | None = None
+    block_name: str | None = None
+    is_duplicate: bool = False
+    tags: list[str] = Field(default_factory=list)
+    is_favorite: bool = False
+    is_pinned: bool = False
     updated_at: object
 
 
@@ -83,13 +133,27 @@ class ImportConfirm(BaseModel):
     mapping: dict[str, str] = Field(
         default_factory=lambda: {"title": "title", "url": "url", "username": "username", "password": "password", "notes": "notes"}
     )
-    skip_duplicates: bool = True
+    skip_duplicates: bool = False
+    # "exact" = title+url+username+password exact match; "title_url" = old behavior; "none" = import all without dedup
+    dedup_mode: str = Field(default="none", pattern=r"^(none|exact|title_url|title_url_username)$")
+    district_id: int | None = None
+    block_id: int | None = None
 
 
 class ImportResult(BaseModel):
     imported: int
     skipped_duplicates: int
     failed: int
+    marked_duplicates: int = 0
+
+
+class UserTagIn(BaseModel):
+    tag: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_\- ]+$")
+
+
+class UserMetaIn(BaseModel):
+    is_favorite: bool | None = None
+    is_pinned: bool | None = None
 
 
 class AuditOut(BaseModel):

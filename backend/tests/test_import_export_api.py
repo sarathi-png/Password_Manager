@@ -44,14 +44,29 @@ def test_confirm_import_then_list(client, admin_headers):
 
 
 def test_confirm_import_skips_duplicates(client, admin_headers):
+    # explicit skip mode: old behavior via dedup_mode=title_url + skip_duplicates=true
+    resp = client.post(
+        "/api/import/confirm",
+        files={"file": ("chrome.csv", CHROME_CSV.encode("utf-8"), "text/csv")},
+        data={"skip_duplicates": "true", "dedup_mode": "title_url"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["imported"] == 0
+    assert resp.json()["skipped_duplicates"] == 2
+
+
+def test_confirm_import_marks_duplicates_not_skips(client, admin_headers):
+    # default new behavior: import all (dedup_mode=none) and mark as duplicate
     resp = client.post(
         "/api/import/confirm",
         files={"file": ("chrome.csv", CHROME_CSV.encode("utf-8"), "text/csv")},
         headers=admin_headers,
     )
     assert resp.status_code == 200
-    assert resp.json()["imported"] == 0
-    assert resp.json()["skipped_duplicates"] == 2
+    # with dedup_mode=none, same file is imported again and flagged as duplicate
+    assert resp.json()["imported"] == 2
+    assert resp.json()["marked_duplicates"] == 2
 
 
 def test_export_csv(client, admin_headers):

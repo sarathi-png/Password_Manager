@@ -25,9 +25,19 @@ def _load_or_create_master_key() -> bytes:
     env_key = settings.vault_master_key
     if env_key:
         try:
-            return base64.b64decode(env_key)
-        except Exception:
-            raise RuntimeError("VAULT_MASTER_KEY must be base64-encoded 32 bytes")
+            key = base64.b64decode(env_key, validate=True)
+        except Exception as exc:
+            raise RuntimeError(
+                "VAULT_MASTER_KEY must be base64-encoded 32 bytes. "
+                "Generate one with: python -c \"from app.crypto import generate_master_key_b64; print(generate_master_key_b64())\" "
+                f"(underlying error: {exc})"
+            ) from exc
+        if len(key) != 32:
+            raise RuntimeError(
+                f"VAULT_MASTER_KEY decodes to {len(key)} bytes, expected 32. "
+                "Generate a valid one with: python -c \"from app.crypto import generate_master_key_b64; print(generate_master_key_b64())\""
+            )
+        return key
 
     key_file = Path(settings.master_key_file)
     if key_file.exists():

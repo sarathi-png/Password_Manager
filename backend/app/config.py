@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     max_import_rows: int = 50000
     opencode_api_key: str = ""
     opencode_api_base: str = "https://api.openai.com/v1"
+    opencode_model: str = "gpt-4o-mini"
 
     @property
     def cors_origin_list(self) -> list[str]:

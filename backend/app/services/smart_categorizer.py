@@ -184,12 +184,12 @@ def propose_smart_groups(host_groups: list[dict], use_ai: bool = True) -> list[d
 
     # AI assist: batch up to 30 domains
     try:
-        return _ai_enrich(smart, host_groups, key, settings.opencode_api_base)
+        return _ai_enrich(smart, host_groups, key, settings.opencode_api_base, settings.opencode_model)
     except Exception:
         return smart
 
 
-def _ai_enrich(smart: list[dict], host_groups: list[dict], api_key: str, base_url: str) -> list[dict]:
+def _ai_enrich(smart: list[dict], host_groups: list[dict], api_key: str, base_url: str, model: str = "gpt-4o-mini") -> list[dict]:
     # Build prompt
     payload_domains = []
     for g in host_groups[:30]:
@@ -205,7 +205,7 @@ def _ai_enrich(smart: list[dict], host_groups: list[dict], api_key: str, base_ur
     url = base_url.rstrip("/") + "/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     body = {
-        "model": "gpt-4o-mini",
+        "model": model or "gpt-4o-mini",
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,
         "max_tokens": 800,

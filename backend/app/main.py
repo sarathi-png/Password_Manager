@@ -110,8 +110,20 @@ def _ensure_migrations():
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     _ensure_migrations()
+    _warm_vault_key()
     seed_admin()
     yield
+
+
+def _warm_vault_key() -> None:
+    """Fail fast (loudly) if VAULT_MASTER_KEY is misconfigured, instead of failing on first encrypt."""
+    from .crypto import _get_key
+
+    try:
+        _get_key()
+        logger.info("Vault master key loaded OK")
+    except Exception as exc:
+        logger.error("VAULT MASTER KEY MISCONFIGURED — encrypt/decrypt will fail until fixed: %s", exc)
 
 
 def create_app() -> FastAPI:

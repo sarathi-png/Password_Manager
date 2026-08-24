@@ -1,6 +1,6 @@
 /* ============================================================
    Vault — Dark-first design system (2026)
-   Tokens: Aurora violet-cyan accent, Fraunces + Inter
+   Tokens: Aurora violet-cyan accent, Anthropic Serif + Sans
    ============================================================ */
 
 :root {
@@ -23,8 +23,9 @@
   --warning: #FBBF24;
   --danger: #F87171;
 
-  --font-display: "Fraunces", "Georgia", serif;
-  --font-ui: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Anthropic Serif", "Georgia", serif;
+  --font-ui: "Anthropic Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "Anthropic Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
 
   --radius: 14px;
   --radius-lg: 20px;
@@ -550,6 +551,7 @@ tbody tr:hover td:last-child { background: var(--surface-1); }
 }
 .guide-box ol { padding-left: 20px; margin-top: 8px; display: grid; gap: 6px; }
 .guide-box code {
+  font-family: var(--font-mono);
   background: rgba(139, 92, 246, 0.15);
   border: 1px solid rgba(139, 92, 246, 0.3);
   color: #C4B5FD;

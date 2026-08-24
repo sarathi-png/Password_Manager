@@ -29,9 +29,30 @@ backend/            FastAPI app + admin SPA (served by the backend)
   static/           admin website (index.html, css, js)
   tests/            47 pytest tests
 mobile/             Flutter app (employees, read-only)
-Dockerfile          container for cloud deploy
-render.yaml         Render.com blueprint (web + Postgres)
+Dockerfile          container for cloud deploy (Render/Koyeb/Cloud Run)
 ```
+
+## Deploy to Render (Web Service — no blueprint)
+
+1. Render dashboard → **New +** → **Web Service** → connect this GitHub repo
+2. **Runtime:** Docker · **Instance:** Free
+3. Create/link a **Postgres** instance (Render → New + → Postgres, free plan) and copy its *Internal Database URL*
+4. Add these environment variables (Dashboard → Web Service → Environment):
+
+| Key | Value | Notes |
+|---|---|---|
+| `DATABASE_URL` | `postgresql+psycopg://user:pass@host/db` | From the Postgres *Internal Database URL*; keep the `postgresql+psycopg://` scheme |
+| `JWT_SECRET` | long random string (32+) | e.g. `python -c "import secrets;print(secrets.token_urlsafe(48))"` |
+| `VAULT_MASTER_KEY` | base64 of 32 bytes | `python -c "from app.crypto import generate_master_key_b64; print(generate_master_key_b64())"` |
+| `INITIAL_ADMIN_USERNAME` | `admin` | Seed account, created only if no admin exists |
+| `INITIAL_ADMIN_PASSWORD` | your chosen password | Read once at seed time; changing later does NOT update the password |
+| `SYNC_ADMIN_PASSWORD` | `true` only while recovering access | Resets seeded admin's password on every boot; remove after use |
+| `CORS_ORIGINS` | `*` | Or comma-separated origins |
+| `ENVIRONMENT` | `production` | |
+
+5. Deploy. The service serves both the API and the admin website from one URL.
+
+> Note: there is intentionally **no `render.yaml` blueprint** in this repo — deploy manually as a Web Service so environment values are controlled in the dashboard.
 
 ## Run locally
 

@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -15,6 +16,8 @@ from ..services.smart_categorizer import group_by_registrable, host_group_key_fo
 from ..config import get_settings
 
 router = APIRouter(prefix="/api", tags=["import-export"])
+
+logger = logging.getLogger("vault.import")
 
 settings = get_settings()
 
@@ -105,6 +108,7 @@ async def confirm_import(
     skipped = 0
     failed = 0
     marked_duplicates = 0
+    row_errors: list[str] = []
 
     # Build existing key set for duplicate detection / marking
     dedup_mode = getattr(body, "dedup_mode", "none") or "none"
@@ -167,7 +171,7 @@ async def confirm_import(
                 db.flush()
             smart_map[g["registrable_domain"]] = cat.id
 
-    for row in parsed.rows:
+    for idx, row in enumerate(parsed.rows, start=1):
         try:
             # Determine duplicate status for marking
             broad_key = (row.title.lower(), row.url.lower())
@@ -221,13 +225,21 @@ async def confirm_import(
             if is_duplicate_flag:
                 marked_duplicates += 1
             imported += 1
-        except Exception:
+        except Exception as exc:
             failed += 1
+            # A failed flush poisons the session — roll back so later rows can proceed
+            db.rollback()
+            logger.exception("Import row %d failed (title=%r url=%r)", idx, row.title[:80], row.url[:120])
+            if len(row_errors) < 5:
+                row_errors.append(f"row {idx} ({row.title[:60] or 'untitled'}): {type(exc).__name__}: {exc}")
 
+    first_error = row_errors[0] if row_errors else ""
     db.add(AuditLog(user_id=admin.id, action="import.run",
-                    detail=f"imported={imported} skipped={skipped} marked_dup={marked_duplicates} failed={failed} format={parsed.detected_format}"))
+                    detail=f"imported={imported} skipped={skipped} marked_dup={marked_duplicates} failed={failed} format={parsed.detected_format}"
+                           + (f" first_error={first_error[:300]}" if first_error else "")))
     db.commit()
-    return ImportResult(imported=imported, skipped_duplicates=skipped, failed=failed, marked_duplicates=marked_duplicates)
+    return ImportResult(imported=imported, skipped_duplicates=skipped, failed=failed,
+                        marked_duplicates=marked_duplicates, errors=row_errors)
 
 
 @router.get("/export")

@@ -892,6 +892,17 @@ function openImportWizard() {
         const res = await api("/api/import/confirm", { method: "POST", body: form });
         closeModal();
         toast(`Imported ${res.imported}, skipped ${res.skipped_duplicates} duplicate${res.skipped_duplicates === 1 ? "" : "s"}${res.failed ? `, ${res.failed} failed` : ""}`, res.failed ? "info" : "success");
+        if (res.failed && Array.isArray(res.errors) && res.errors.length) {
+          openModal(`
+            <div class="modal-head"><div class="modal-title">Import problems</div><button class="modal-close" data-close="1">×</button></div>
+            <div>
+              <p style="margin:0 0 12px;color:var(--text-2);font-size:13.5px">${res.failed} row${res.failed === 1 ? "" : "s"} could not be imported. First ${res.errors.length} reason${res.errors.length === 1 ? "" : "s"}:</p>
+              <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px">
+                ${res.errors.map((er) => `<li style="font-size:13px;color:var(--text-1);word-break:break-word">${escapeHtml(er)}</li>`).join("")}
+              </ul>
+            </div>
+            <div class="modal-foot"><button class="btn btn-primary" data-close="1">Understood</button></div>`);
+        }
         await loadEntries();
         renderVault();
       } catch (ex) {

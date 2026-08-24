@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+import logging
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,56 +15,74 @@ from .models import AuditLog, User
 from .routers import audit, auth, categories, districts, entries, import_export, users
 from sqlalchemy import inspect, text
 
+logger = logging.getLogger("vault.migrations")
+logging.basicConfig(level=logging.INFO)
+
 settings = get_settings()
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 def _ensure_migrations():
-    """Lightweight SQLite/Postgres migration for added columns (for Render free deploy without alembic)."""
+    """Lightweight SQLite/Postgres migration for added columns (for Render free deploy without alembic).
+
+    Each ALTER runs in its own transaction so one failure cannot skip the remaining columns.
+    """
     try:
         insp = inspect(engine)
-        # users
+
+        def _add_column(table: str, col: str, ddl: str) -> None:
+            # fresh inspector each check — Inspector caches column info
+            cols = {c["name"] for c in inspect(engine).get_columns(table)}
+            if col in cols:
+                return
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+                logger.info("Migration: added %s.%s", table, col)
+            except Exception:
+                logger.exception("Migration FAILED: %s.%s (%s)", table, col, ddl)
+
+        # users scope columns
         if "users" in insp.get_table_names():
-            cols = {c["name"] for c in insp.get_columns("users")}
-            with engine.begin() as conn:
-                if "district_id" not in cols:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN district_id INTEGER"))
-                if "block_id" not in cols:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN block_id INTEGER"))
+            _add_column("users", "district_id", "INTEGER")
+            _add_column("users", "block_id", "INTEGER")
+
+        # password_entries smart-grouping + scope columns
         if "password_entries" in insp.get_table_names():
-            cols = {c["name"] for c in insp.get_columns("password_entries")}
-            with engine.begin() as conn:
-                if "district_id" not in cols:
-                    conn.execute(text("ALTER TABLE password_entries ADD COLUMN district_id INTEGER"))
-                if "block_id" not in cols:
-                    conn.execute(text("ALTER TABLE password_entries ADD COLUMN block_id INTEGER"))
-                if "is_duplicate" not in cols:
-                    # Postgres needs FALSE, SQLite accepts 0; use FALSE for compat, SQLite will coerce
-                    try:
-                        conn.execute(text("ALTER TABLE password_entries ADD COLUMN is_duplicate BOOLEAN NOT NULL DEFAULT FALSE"))
-                    except Exception:
-                        # fallback for SQLite older
-                        conn.execute(text("ALTER TABLE password_entries ADD COLUMN is_duplicate BOOLEAN NOT NULL DEFAULT 0"))
-                for col, typ in [
-                    ("host", "VARCHAR(255)"),
-                    ("exact_host", "VARCHAR(255)"),
-                    ("registrable_domain", "VARCHAR(255)"),
-                    ("host_group_key", "VARCHAR(255)"),
-                    ("smart_category_id", "INTEGER"),
-                    ("smart_subcategory_id", "INTEGER"),
-                ]:
-                    if col not in cols:
-                        conn.execute(text(f"ALTER TABLE password_entries ADD COLUMN {col} {typ}"))
-        # ensure new tables for districts/blocks etc. already via create_all, but ensure is_duplicate default backfill
+            _add_column("password_entries", "district_id", "INTEGER")
+            _add_column("password_entries", "block_id", "INTEGER")
+            # Postgres needs FALSE, SQLite accepts 0; use FALSE for compat, SQLite will coerce
+            _add_column("password_entries", "is_duplicate", "BOOLEAN NOT NULL DEFAULT FALSE")
+            for col, typ in [
+                ("host", "VARCHAR(255)"),
+                ("exact_host", "VARCHAR(255)"),
+                ("registrable_domain", "VARCHAR(255)"),
+                ("host_group_key", "VARCHAR(255)"),
+                ("smart_category_id", "INTEGER"),
+                ("smart_subcategory_id", "INTEGER"),
+            ]:
+                _add_column("password_entries", col, typ)
+
         try:
             with engine.begin() as conn:
                 conn.execute(text("UPDATE password_entries SET is_duplicate = FALSE WHERE is_duplicate IS NULL"))
                 conn.execute(text("UPDATE password_entries SET host = '' WHERE host IS NULL"))
                 conn.execute(text("UPDATE password_entries SET host_group_key = COALESCE(registrable_domain, host, '') WHERE host_group_key IS NULL OR host_group_key = ''"))
         except Exception:
-            pass
+            logger.exception("Backfill after column migration failed")
+
+        # verify: scream if anything required is still missing
+        if "password_entries" in insp.get_table_names():
+            have = {c["name"] for c in inspect(engine).get_columns("password_entries")}
+            required = {"district_id", "block_id", "is_duplicate", "host", "exact_host",
+                        "registrable_domain", "host_group_key", "smart_category_id", "smart_subcategory_id"}
+            missing = required - have
+            if missing:
+                logger.error("Schema verification FAILED — password_entries still missing columns: %s", sorted(missing))
+            else:
+                logger.info("Schema migration check completed — password_entries has all required columns")
     except Exception:
-        pass  # best effort; tests use fresh DB
+        logger.exception("Schema migration crashed unexpectedly")
 
     # seed system categories
     try:
@@ -84,7 +103,7 @@ def _ensure_migrations():
                     db.add(Category(name="LokOS-School", slug="lokos-school", parent_id=edu.id, is_system=True))
                     db.commit()
     except Exception:
-        pass
+        logger.exception("Category seeding failed")
 
 
 @asynccontextmanager

@@ -116,3 +116,31 @@ def test_audit_log_records_actions(client, admin_headers):
     assert "login.success" in actions
     assert "import.run" in actions
     assert "export.run" in actions
+
+
+def test_confirm_chrome_csv_bom_quotes_unicode(client, admin_headers):
+    # Real-world Chrome export: UTF-8 BOM, quoted commas, doubled quotes, unicode
+    rows = ["name,url,username,password,note"]
+    for i in range(1, 21):
+        rows.append(f'School {i} Portal,https://school{i}.example.ac.in,admin{i},"p@ss,w{i}",note with ""quotes""')
+    data = ("\ufeff" + "\n".join(rows)).encode("utf-8")
+    resp = client.post(
+        "/api/import/confirm",
+        files={"file": ("chrome.csv", data, "text/csv")},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["imported"] == 20
+    assert body["failed"] == 0
+    assert body["errors"] == []
+
+
+def test_import_result_always_has_errors_field(client, admin_headers):
+    resp = client.post(
+        "/api/import/confirm",
+        files={"file": ("chrome.csv", CHROME_CSV.encode("utf-8"), "text/csv")},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200
+    assert "errors" in resp.json()

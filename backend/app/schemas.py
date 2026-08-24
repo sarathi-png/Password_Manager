@@ -206,6 +206,7 @@ class ImportResult(BaseModel):
     skipped_duplicates: int
     failed: int
     marked_duplicates: int = 0
+    errors: list[str] = Field(default_factory=list)
 
 
 class UserTagIn(BaseModel):

@@ -18,6 +18,16 @@ class VaultUser {
         districtName: json['district_name'] as String?,
         blockName: json['block_name'] as String?,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'username': username,
+        'role': role,
+        'district_id': districtId,
+        'block_id': blockId,
+        'district_name': districtName,
+        'block_name': blockName,
+      };
 }
 
 class VaultEntry {

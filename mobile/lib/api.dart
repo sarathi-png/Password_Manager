@@ -19,6 +19,7 @@ class ApiClient {
   static const _storage = FlutterSecureStorage();
   static const _tokenKey = 'vault_token';
   static const _serverKey = 'vault_server';
+  static const _userKey = 'vault_user';
   // Build-time override: flutter build apk --dart-define=API_BASE_URL=http://192.168.1.10:8000
   static const String defaultServer = String.fromEnvironment('API_BASE_URL', defaultValue: 'https://vault-lcgd.onrender.com');
 
@@ -31,14 +32,33 @@ class ApiClient {
     final saved = prefs.getString(_serverKey);
     baseUrl = (saved == null || saved.isEmpty) ? defaultServer : saved;
     _token = await _storage.read(key: _tokenKey);
+    final cachedUser = prefs.getString(_userKey);
+    if (cachedUser != null) {
+      try {
+        user = VaultUser.fromJson(jsonDecode(cachedUser) as Map<String, dynamic>);
+      } catch (_) {
+        user = null;
+      }
+    }
   }
 
   Future<void> saveSession(String baseUrl) async {
     this.baseUrl = baseUrl;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_serverKey, baseUrl);
+    await _persistAuth(prefs);
+  }
+
+  Future<void> _persistAuth(SharedPreferences prefs) async {
     if (_token != null) {
       await _storage.write(key: _tokenKey, value: _token);
+    } else {
+      await _storage.delete(key: _tokenKey);
+    }
+    if (user != null) {
+      await prefs.setString(_userKey, jsonEncode(user!.toJson()));
+    } else {
+      await prefs.remove(_userKey);
     }
   }
 
@@ -46,6 +66,8 @@ class ApiClient {
     _token = null;
     user = null;
     await _storage.delete(key: _tokenKey);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_userKey);
   }
 
   bool get isLoggedIn => _token != null;
@@ -95,6 +117,7 @@ class ApiClient {
     final body = _decode(resp) as Map<String, dynamic>;
     _token = body['access_token'] as String;
     user = await me();
+    await _persistAuth(await SharedPreferences.getInstance());
     return user!;
   }
 

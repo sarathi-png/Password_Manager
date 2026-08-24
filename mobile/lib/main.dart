@@ -32,15 +32,33 @@ class _VaultAppState extends State<VaultApp> {
 
   Future<void> _bootstrap() async {
     await _api.loadSession();
-    if (_api.isLoggedIn && _api.baseUrl.isNotEmpty) {
+    if (_api.isLoggedIn) {
+      // Instant restore from cached profile — no waiting on a possibly
+      // cold-started server (Render free tier can take ~50s to wake).
+      _user = _api.user;
+      if (_user != null) {
+        if (mounted) setState(() => _booted = true);
+        try {
+          final fresh = await _api.me();
+          _user = fresh;
+          if (mounted) setState(() {});
+        } on ApiException catch (e) {
+          if (e.statusCode == 401) {
+            await _api.clearSession();
+            if (mounted) setState(() => _user = null);
+          }
+        } catch (_) {
+          // server unreachable — stay logged in with cached profile
+        }
+        return;
+      }
+      // token but no cached profile — must ask the server
       try {
         _user = await _api.me();
       } on ApiException catch (e) {
-        if (e.statusCode == 401) {
-          await _api.clearSession();
-        }
+        if (e.statusCode == 401) await _api.clearSession();
       } catch (_) {
-        // server unreachable — keep session, show login with error path
+        // server unreachable — fall through to login; token stays stored
       }
     }
     if (mounted) setState(() => _booted = true);

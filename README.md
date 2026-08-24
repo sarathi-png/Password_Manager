@@ -49,8 +49,12 @@ Dockerfile          container for cloud deploy (Render/Koyeb/Cloud Run)
 | `SYNC_ADMIN_PASSWORD` | `true` only while recovering access | Resets seeded admin's password on every boot; remove after use |
 | `CORS_ORIGINS` | `*` | Or comma-separated origins |
 | `ENVIRONMENT` | `production` | |
+| `OPENCODE_API_KEY` | *(optional)* AI provider key | Enables AI-assisted category suggestions during import; without it, rule-based categorization runs silently |
+| `OPENCODE_API_BASE` | *(optional)* OpenAI-compatible base URL | Default `https://api.openai.com/v1` |
+| `OPENCODE_MODEL` | *(optional)* chat model name | Default `gpt-4o-mini` |
 
 5. Deploy. The service serves both the API and the admin website from one URL.
+6. Check **Logs** at startup — you should see `Vault master key loaded OK`. If you see `VAULT MASTER KEY MISCONFIGURED`, the key is not valid base64-encoded 32 bytes; regenerate with the command above. Never change `VAULT_MASTER_KEY` after entries exist — old ciphertexts become undecryptable.
 
 > Note: there is intentionally **no `render.yaml` blueprint** in this repo — deploy manually as a Web Service so environment values are controlled in the dashboard.
 

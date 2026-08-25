@@ -564,7 +564,7 @@ function renderEntryRows() {
   body.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => viewEntry(Number(b.dataset.view))));
   body.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => openEntryForm(Number(b.dataset.edit))));
   body.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => confirmDelete(Number(b.dataset.del))));
-  body.querySelectorAll(".row-check").forEach((c)=> c.addEventListener("change", (e)=>{ const id=Number(e.target.dataset.id); if(e.target.checked) state.selectedIds.add(id); else state.selectedIds.delete(id); document.getElementById("bulk-bar").style.display=state.selectedIds.size?"flex":"none"; }));
+  body.querySelectorAll(".row-check").forEach((c)=> c.addEventListener("change", (e)=>{ const id=Number(e.target.dataset.id); if(e.target.checked) state.selectedIds.add(id); else state.selectedIds.delete(id); const bar=document.getElementById("bulk-bar"); bar.style.display=state.selectedIds.size?"flex":"none"; const cnt=bar.querySelector("span"); if(cnt) cnt.textContent=state.selectedIds.size+" selected"; }));
 
 }
 
@@ -637,7 +637,7 @@ function bindVaultEvents() {
     }catch(e){toast(e.message,"error");}
   });
   if(bulkClear) bulkClear.addEventListener("click", ()=>{ state.selectedIds.clear(); renderEntryRows(); document.getElementById("bulk-bar").style.display="none";});
-  if(selectAll) selectAll.addEventListener("change", (e)=>{ if(e.target.checked){ state.entries.forEach(en=>state.selectedIds.add(en.id));} else state.selectedIds.clear(); renderEntryRows();});
+  if(selectAll) selectAll.addEventListener("change", (e)=>{ if(e.target.checked){ state.entries.forEach(en=>state.selectedIds.add(en.id));} else state.selectedIds.clear(); renderEntryRows(); const cnt=document.querySelector("#bulk-bar span"); if(cnt) cnt.textContent=state.selectedIds.size+" selected"; });
 
 
   document.querySelectorAll("[data-cat]").forEach((chip) => {

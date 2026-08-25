@@ -115,6 +115,13 @@ def delete_user(user_id: int, admin: User = Depends(require_admin), db: Session 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if user.id == admin.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete yourself")
+    from ..models import UserEntryTag, UserEntryMeta, UserCategoryOverride, UserProfile, AuditLog, PasswordEntry
+    db.query(UserEntryTag).filter(UserEntryTag.user_id == user_id).delete(synchronize_session=False)
+    db.query(UserEntryMeta).filter(UserEntryMeta.user_id == user_id).delete(synchronize_session=False)
+    db.query(UserCategoryOverride).filter(UserCategoryOverride.user_id == user_id).delete(synchronize_session=False)
+    db.query(UserProfile).filter(UserProfile.user_id == user_id).delete(synchronize_session=False)
+    db.query(AuditLog).filter(AuditLog.user_id == user_id).delete(synchronize_session=False)
+    db.query(PasswordEntry).filter(PasswordEntry.owner_id == user_id).delete(synchronize_session=False)
     db.delete(user)
     db.add(AuditLog(user_id=admin.id, action="user.delete", target=user.username))
     db.commit()

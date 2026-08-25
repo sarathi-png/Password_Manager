@@ -173,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           keyboardType: TextInputType.url,
                           decoration: InputDecoration(
                             labelText: 'Server URL',
-                            hintText: 'https://vault-lcgd.onrender.com',
+                            hintText: 'https://vault-ywol.onrender.com',
                             prefixIcon: const Icon(Icons.link_rounded, size: 18),
                             helperText: 'Use http://192.168.1.10:8000 for local testing',
                           ),

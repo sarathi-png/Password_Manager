@@ -987,6 +987,7 @@ function openImportWizard() {
             <div class="modal-foot"><button class="btn btn-primary" data-close="1">Understood</button></div>`);
         }
         await loadEntries();
+        if (state.grouped) await loadGroups();
         renderVault();
       } catch (ex) {
         toast(ex.message, "error");

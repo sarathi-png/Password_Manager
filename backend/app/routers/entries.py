@@ -192,9 +192,18 @@ def list_entries(
             query = query.filter(PasswordEntry.search_vector.op('@@')(tsquery))
         else:
             like = f"%{q}%"
-            query = query.filter(or_(PasswordEntry.title.ilike(like), PasswordEntry.url.ilike(like), PasswordEntry.host.ilike(like)))
+            query = query.filter(or_(PasswordEntry.title.ilike(like), PasswordEntry.url.ilike(like), PasswordEntry.host.ilike(like), PasswordEntry.registrable_domain.ilike(like)))
     if category:
-        query = query.filter(PasswordEntry.category == category)
+        # Check legacy category, smart category (via Category table), and user override
+        smart_cat_ids = db.query(PasswordEntry.id).join(Category, PasswordEntry.smart_category_id == Category.id).filter(Category.name == category)
+        override_cat_ids = db.query(UserCategoryOverride.entry_id).join(Category, UserCategoryOverride.category_id == Category.id).filter(
+            UserCategoryOverride.user_id == user.id, Category.name == category
+        )
+        query = query.filter(or_(
+            PasswordEntry.category == category,
+            PasswordEntry.id.in_(smart_cat_ids),
+            PasswordEntry.id.in_(override_cat_ids),
+        ))
     if district_id is not None:
         query = query.filter(PasswordEntry.district_id == district_id)
     if block_id is not None:
@@ -240,6 +249,10 @@ def list_groups(
     block_id: int | None = None,
     search_mode: Literal["basic", "smart"] = Query(default="basic"),
     profile_id: int | None = None,
+    category: str = Query(default=""),
+    is_duplicate: bool | None = None,
+    tag: str | None = None,
+    is_favorite: bool | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -254,11 +267,29 @@ def list_groups(
             query = query.filter(PasswordEntry.search_vector.op('@@')(tsquery))
         else:
             like = f"%{q}%"
-            query = query.filter(or_(PasswordEntry.title.ilike(like), PasswordEntry.url.ilike(like), PasswordEntry.host.ilike(like)))
+            query = query.filter(or_(PasswordEntry.title.ilike(like), PasswordEntry.url.ilike(like), PasswordEntry.host.ilike(like), PasswordEntry.registrable_domain.ilike(like)))
+    if category:
+        smart_cat_ids = db.query(PasswordEntry.id).join(Category, PasswordEntry.smart_category_id == Category.id).filter(Category.name == category)
+        override_cat_ids = db.query(UserCategoryOverride.entry_id).join(Category, UserCategoryOverride.category_id == Category.id).filter(
+            UserCategoryOverride.user_id == user.id, Category.name == category
+        )
+        query = query.filter(or_(
+            PasswordEntry.category == category,
+            PasswordEntry.id.in_(smart_cat_ids),
+            PasswordEntry.id.in_(override_cat_ids),
+        ))
     if district_id is not None:
         query = query.filter(PasswordEntry.district_id == district_id)
     if block_id is not None:
         query = query.filter(PasswordEntry.block_id == block_id)
+    if is_duplicate is not None:
+        query = query.filter(PasswordEntry.is_duplicate == is_duplicate)
+    if tag:
+        sub = db.query(UserEntryTag.entry_id).filter(UserEntryTag.user_id == user.id, UserEntryTag.tag == tag).subquery()
+        query = query.filter(PasswordEntry.id.in_(sub))
+    if is_favorite is not None:
+        sub = db.query(UserEntryMeta.entry_id).filter(UserEntryMeta.user_id == user.id, UserEntryMeta.is_favorite == is_favorite).subquery()
+        query = query.filter(PasswordEntry.id.in_(sub)) if is_favorite else query.filter(~PasswordEntry.id.in_(sub))
     entries = query.limit(10000).all()
     # group
     groups: dict[str, dict] = {}

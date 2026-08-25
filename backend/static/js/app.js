@@ -365,6 +365,15 @@ async function loadEntries() {
   }
 }
 
+async function refreshCurrentView() {
+  if (state.grouped) {
+    await loadGroups();
+    renderGrouped();
+  } else {
+    renderEntryRows();
+  }
+}
+
 function renderVault() {
   const stats = vaultStats();
   document.getElementById("app").innerHTML = shell(
@@ -569,19 +578,19 @@ function bindVaultEvents() {
   search.addEventListener("input", debounce(async () => {
     state.filters.q = search.value.trim();
     await loadEntries();
-    renderEntryRows();
+    refreshCurrentView();
   }, 280));
   if (smartSearchToggle) smartSearchToggle.addEventListener("change", async () => {
     state.filters.search_mode = smartSearchToggle.checked ? "smart" : "basic";
     await loadEntries();
-    renderEntryRows();
+    refreshCurrentView();
   });
-  if(tagSearch) tagSearch.addEventListener("input", debounce(async()=>{ state.filters.tag=tagSearch.value.trim(); await loadEntries(); renderEntryRows();},300));
+  if(tagSearch) tagSearch.addEventListener("input", debounce(async()=>{ state.filters.tag=tagSearch.value.trim(); await loadEntries(); refreshCurrentView();},300));
   if(districtSel) districtSel.addEventListener("change", async()=>{ state.filters.district_id=districtSel.value; state.filters.block_id=""; await loadEntries(); renderVault(); });
-  if(blockSel) blockSel.addEventListener("change", async()=>{ state.filters.block_id=blockSel.value; await loadEntries(); renderEntryRows(); });
-  if(dupChk) dupChk.addEventListener("change", async()=>{ state.filters.is_duplicate=dupChk.checked?"true":""; await loadEntries(); renderEntryRows(); });
-  if(favChk) favChk.addEventListener("change", async()=>{ state.filters.is_favorite=favChk.checked; await loadEntries(); renderEntryRows(); });
-  if(sortSel) sortSel.addEventListener("change", async()=>{ state.filters.sort=sortSel.value; await loadEntries(); renderEntryRows(); });
+  if(blockSel) blockSel.addEventListener("change", async()=>{ state.filters.block_id=blockSel.value; await loadEntries(); refreshCurrentView(); });
+  if(dupChk) dupChk.addEventListener("change", async()=>{ state.filters.is_duplicate=dupChk.checked?"true":""; await loadEntries(); refreshCurrentView(); });
+  if(favChk) favChk.addEventListener("change", async()=>{ state.filters.is_favorite=favChk.checked; await loadEntries(); refreshCurrentView(); });
+  if(sortSel) sortSel.addEventListener("change", async()=>{ state.filters.sort=sortSel.value; await loadEntries(); refreshCurrentView(); });
   if(clearBtn) clearBtn.addEventListener("click", async()=>{ state.filters={q:"",search_mode:"basic",include_password:false,category:"",district_id:"",block_id:"",is_duplicate:"",tag:"",is_favorite:false,sort:"title"}; await loadEntries(); if(state.grouped) await loadGroups(); renderVault(); });
   const groupedToggle=document.getElementById("grouped-toggle"); if(groupedToggle) groupedToggle.addEventListener("change", async()=>{ state.grouped=groupedToggle.checked; if(state.grouped) await loadGroups(); renderGrouped(); document.getElementById("flat-wrap").style.display=state.grouped?"none":"block"; document.getElementById("grouped-wrap").style.display=state.grouped?"block":"none"; if(!state.grouped) renderEntryRows(); });
   const bulkDistrict=document.getElementById("bulk-district"); const bulkBlock=document.getElementById("bulk-block"); const bulkCat=document.getElementById("bulk-cat"); const bulkNewCat=document.getElementById("bulk-new-cat"); const bulkAssign=document.getElementById("bulk-assign"); const bulkClear=document.getElementById("bulk-clear"); const selectAll=document.getElementById("select-all");
@@ -601,7 +610,7 @@ function bindVaultEvents() {
       const qp=[]; if(did)qp.push(`district_id=${did}`); if(bid)qp.push(`block_id=${bid}`); if(cid)qp.push(`category_id=${cid}`);
       if(!qp.length) return toast("Choose district, block or category","error");
       await api(`/api/entries/bulk-assign?${qp.join("&")}`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ids)});
-      toast(`Assigned ${ids.length} entries`,"success"); state.selectedIds.clear(); await loadEntries(); renderEntryRows(); document.getElementById("bulk-bar").style.display="none";
+      toast(`Assigned ${ids.length} entries`,"success"); state.selectedIds.clear(); await loadEntries(); refreshCurrentView(); document.getElementById("bulk-bar").style.display="none";
     }catch(e){toast(e.message,"error");}
   });
   if(bulkClear) bulkClear.addEventListener("click", ()=>{ state.selectedIds.clear(); renderEntryRows(); document.getElementById("bulk-bar").style.display="none";});
@@ -613,7 +622,7 @@ function bindVaultEvents() {
       state.filters.category = chip.dataset.cat;
       document.querySelectorAll("[data-cat]").forEach((c) => c.classList.toggle("active", c === chip));
       await loadEntries();
-      renderEntryRows();
+      refreshCurrentView();
     });
   });
 
@@ -1007,8 +1016,13 @@ async function loadGroups() {
   try {
     const params = new URLSearchParams();
     if (state.filters.q) params.set("q", state.filters.q);
+    if (state.filters.search_mode) params.set("search_mode", state.filters.search_mode);
+    if (state.filters.category) params.set("category", state.filters.category);
     if (state.filters.district_id) params.set("district_id", state.filters.district_id);
     if (state.filters.block_id) params.set("block_id", state.filters.block_id);
+    if (state.filters.is_duplicate) params.set("is_duplicate", state.filters.is_duplicate);
+    if (state.filters.tag) params.set("tag", state.filters.tag);
+    if (state.filters.is_favorite) params.set("is_favorite", "true");
     if (state.currentProfileId) params.set("profile_id", state.currentProfileId);
     state.groups = await api(`/api/entries/groups?${params}`);
   } catch(e){ state.groups=[]; }

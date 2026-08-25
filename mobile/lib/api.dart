@@ -128,9 +128,11 @@ class ApiClient {
     return user!;
   }
 
-  Future<List<VaultEntry>> listEntries({String query = '', String category = '', int? districtId, int? blockId, bool? isDuplicate, String? tag, bool? isFavorite, bool? isPinned, String sort = 'title'}) async {
+  Future<List<VaultEntry>> listEntries({String query = '', String category = '', int? districtId, int? blockId, bool? isDuplicate, String? tag, bool? isFavorite, bool? isPinned, String sort = 'title', String searchMode = 'basic', bool includePassword = false}) async {
     final params = <String, String>{
       if (query.isNotEmpty) 'q': query,
+      if (searchMode != 'basic') 'search_mode': searchMode,
+      if (includePassword) 'include_password': 'true',
       if (category.isNotEmpty) 'category': category,
       if (districtId != null) 'district_id': districtId.toString(),
       if (blockId != null) 'block_id': blockId.toString(),
@@ -192,9 +194,10 @@ class ApiClient {
     return list.map((e) => e as Map<String, dynamic>).toList();
   }
 
-  Future<List<Map<String, dynamic>>> listGroups({String query = '', int? districtId, int? blockId}) async {
+  Future<List<Map<String, dynamic>>> listGroups({String query = '', int? districtId, int? blockId, String searchMode = 'basic'}) async {
     final params = <String, String>{
       if (query.isNotEmpty) 'q': query,
+      if (searchMode != 'basic') 'search_mode': searchMode,
       if (districtId != null) 'district_id': districtId.toString(),
       if (blockId != null) 'block_id': blockId.toString(),
     };
@@ -226,5 +229,15 @@ class ApiClient {
     final resp = await http.put(_uri('/api/entries/$entryId/my-category'), headers: _headers, body: jsonEncode(body)).timeout(const Duration(seconds: 60));
     _check(resp);
     return _decode(resp) as Map<String, dynamic>;
+  }
+
+  Future<void> updateUserSettings({bool? searchIncludePassword}) async {
+    final body = <String, dynamic>{};
+    if (searchIncludePassword != null) body['search_include_password'] = searchIncludePassword;
+    if (body.isEmpty) return;
+    final resp = await http.put(_uri('/api/users/me'), headers: _headers, body: jsonEncode(body)).timeout(const Duration(seconds: 60));
+    _check(resp);
+    final data = _decode(resp) as Map<String, dynamic>;
+    user = VaultUser.fromJson(data);
   }
 }

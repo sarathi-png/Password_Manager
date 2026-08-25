@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from ..crypto import decrypt, encrypt
+from ..crypto import decrypt, encrypt, build_search_vector, build_search_vector_plain
 from ..database import get_db
 from ..deps import get_current_user, require_admin
 from ..models import AuditLog, Category, District, Block, PasswordEntry, User
@@ -214,6 +214,16 @@ async def confirm_import(
                 registrable_domain=reg_val[:255],
                 host_group_key=host_key[:255],
                 smart_category_id=smart_cat_id,
+                search_vector=build_search_vector_plain(
+                    title=row.title,
+                    url=row.url,
+                    host=host_val,
+                    registrable_domain=reg_val,
+                    username=row.username,
+                    notes=row.notes,
+                    password=row.password,
+                    include_password=False,
+                ),
             )
             db.add(entry)
             db.flush()

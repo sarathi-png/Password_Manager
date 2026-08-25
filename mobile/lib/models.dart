@@ -6,8 +6,9 @@ class VaultUser {
   final int? blockId;
   final String? districtName;
   final String? blockName;
+  final bool searchIncludePassword;
 
-  VaultUser({required this.id, required this.username, required this.role, this.districtId, this.blockId, this.districtName, this.blockName});
+  VaultUser({required this.id, required this.username, required this.role, this.districtId, this.blockId, this.districtName, this.blockName, this.searchIncludePassword = false});
 
   factory VaultUser.fromJson(Map<String, dynamic> json) => VaultUser(
         id: json['id'] as int,
@@ -17,6 +18,7 @@ class VaultUser {
         blockId: json['block_id'] as int?,
         districtName: json['district_name'] as String?,
         blockName: json['block_name'] as String?,
+        searchIncludePassword: json['search_include_password'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -27,6 +29,7 @@ class VaultUser {
         'block_id': blockId,
         'district_name': districtName,
         'block_name': blockName,
+        'search_include_password': searchIncludePassword,
       };
 }
 

@@ -118,3 +118,15 @@ def delete_user(user_id: int, admin: User = Depends(require_admin), db: Session 
     db.delete(user)
     db.add(AuditLog(user_id=admin.id, action="user.delete", target=user.username))
     db.commit()
+
+
+@router.put("/me", response_model=UserOut)
+def update_self(body: UserUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Only allow updating search_include_password for self
+    if body.search_include_password is not None:
+        user.search_include_password = body.search_include_password
+        db.add(AuditLog(user_id=user.id, action="user.update", target=user.username,
+                        detail=f"search_include_password={user.search_include_password}"))
+        db.commit()
+        db.refresh(user)
+    return _to_out(user, db)

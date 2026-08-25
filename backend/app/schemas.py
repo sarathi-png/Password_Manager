@@ -62,6 +62,7 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
     district_id: int | None = None
     block_id: int | None = None
+    search_include_password: bool | None = None
 
 
 class CategoryOut(BaseModel):

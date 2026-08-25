@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func
 from sqlalchemy.orm import Session
 from collections import defaultdict
+from typing import Literal
 
-from ..crypto import decrypt, encrypt
+from ..crypto import decrypt, encrypt, build_search_vector
 from ..database import get_db
 from ..deps import get_current_user, require_admin
 from ..models import AuditLog, Block, Category, District, PasswordEntry, User, UserCategoryOverride, UserEntryMeta, UserEntryTag
@@ -169,14 +170,24 @@ def list_entries(
     host: str | None = None,
     registrable_domain: str | None = None,
     sort: str = Query(default="title", pattern=r"^(title|updated|recent|favorite)$"),
+    search_mode: Literal["basic", "smart"] = Query(default="basic"),
+    include_password: bool = Query(default=False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     query = db.query(PasswordEntry)
     query = _scope_filter(query, user)
     if q:
-        like = f"%{q}%"
-        query = query.filter(or_(PasswordEntry.title.ilike(like), PasswordEntry.url.ilike(like), PasswordEntry.host.ilike(like)))
+        if search_mode == "smart":
+            # Use PostgreSQL full-text search
+            # Determine if we should include password based on user setting
+            user_include_password = include_password or user.search_include_password
+            # websearch_to_tsquery supports natural language queries with operators
+            tsquery = func.websearch_to_tsquery('english', q)
+            query = query.filter(PasswordEntry.search_vector.op('@@')(tsquery))
+        else:
+            like = f"%{q}%"
+            query = query.filter(or_(PasswordEntry.title.ilike(like), PasswordEntry.url.ilike(like), PasswordEntry.host.ilike(like)))
     if category:
         query = query.filter(PasswordEntry.category == category)
     if district_id is not None:
@@ -222,6 +233,7 @@ def list_groups(
     q: str = Query(default=""),
     district_id: int | None = None,
     block_id: int | None = None,
+    search_mode: Literal["basic", "smart"] = Query(default="basic"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -229,8 +241,12 @@ def list_groups(
     query = db.query(PasswordEntry)
     query = _scope_filter(query, user)
     if q:
-        like = f"%{q}%"
-        query = query.filter(or_(PasswordEntry.title.ilike(like), PasswordEntry.url.ilike(like), PasswordEntry.host.ilike(like)))
+        if search_mode == "smart":
+            tsquery = func.websearch_to_tsquery('english', q)
+            query = query.filter(PasswordEntry.search_vector.op('@@')(tsquery))
+        else:
+            like = f"%{q}%"
+            query = query.filter(or_(PasswordEntry.title.ilike(like), PasswordEntry.url.ilike(like), PasswordEntry.host.ilike(like)))
     if district_id is not None:
         query = query.filter(PasswordEntry.district_id == district_id)
     if block_id is not None:

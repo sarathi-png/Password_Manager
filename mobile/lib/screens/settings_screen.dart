@@ -19,11 +19,13 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _serverCtrl;
+  late VaultUser _user;
 
   @override
   void initState() {
     super.initState();
     _serverCtrl = TextEditingController(text: widget.api.baseUrl);
+    _user = widget.user;
   }
 
   @override
@@ -72,7 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       decoration: const BoxDecoration(gradient: AppGradients.accent, shape: BoxShape.circle),
                       alignment: Alignment.center,
                       child: Text(
-                        widget.user.username.isEmpty ? '?' : widget.user.username.substring(0, 1).toUpperCase(),
+                        _user.username.isEmpty ? '?' : _user.username.substring(0, 1).toUpperCase(),
                         style: GoogleFonts.inter(fontSize: 19, fontWeight: FontWeight.w700, color: AppColors.bg),
                       ),
                     ),
@@ -81,10 +83,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(widget.user.username, style: Theme.of(context).textTheme.titleLarge),
+                          Text(_user.username, style: Theme.of(context).textTheme.titleLarge),
                           const SizedBox(height: 2),
                           Text(
-                            '${widget.user.role} · read-only access',
+                            '${_user.role} · read-only access',
                             style: GoogleFonts.inter(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -158,6 +160,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(width: 8),
                         Text('No write access from this app', style: Theme.of(context).textTheme.bodyMedium),
                       ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surface1,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Smart Search', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 4),
+                    Text('Include decrypted passwords in full-text search results (opt-in).', style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 14),
+                    StatefulBuilder(
+                      builder: (context, setState) => SwitchListTile(
+                        title: Text('Include passwords in smart search', style: Theme.of(context).textTheme.bodyMedium),
+                        subtitle: Text('When enabled, smart search matches against password content', style: Theme.of(context).textTheme.bodySmall),
+                        value: _user.searchIncludePassword,
+                        onChanged: (val) async {
+                          try {
+                            await widget.api.updateUserSettings(searchIncludePassword: val);
+                            setState(() => _user = widget.api.user!);
+                            HapticFeedback.selectionClick();
+                          } catch (e) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+                          }
+                        },
+                        activeThumbColor: AppColors.accent2,
+                      ),
                     ),
                   ],
                 ),

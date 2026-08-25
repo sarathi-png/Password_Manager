@@ -30,6 +30,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showPinned = false;
   String _sort = 'title'; // title | recent | favorite
   bool _grouped = true;
+  String _searchMode = 'basic'; // basic | smart
+  bool _includePassword = false;
   List<Map<String, dynamic>> _groups = [];
   Timer? _debounce;
 
@@ -65,11 +67,13 @@ class _HomeScreenState extends State<HomeScreen> {
         isFavorite: _showFav ? true : null,
         isPinned: _showPinned ? true : null,
         sort: _sort,
+        searchMode: _searchMode,
+        includePassword: _includePassword,
       );
       List<Map<String, dynamic>> groups = [];
       if (_grouped) {
         try {
-          groups = await widget.api.listGroups(query: _searchCtrl.text.trim());
+          groups = await widget.api.listGroups(query: _searchCtrl.text.trim(), searchMode: _searchMode);
         } catch (_) {
           groups = [];
         }
@@ -314,6 +318,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     _SmartChip(label: 'Pinned', selected: _showPinned, icon: Icons.push_pin, onTap: () { setState(() => _showPinned = !_showPinned); _load(); }),
                     _SmartChip(label: 'Duplicates', selected: _showDup, icon: Icons.copy_rounded, onTap: () { setState(() => _showDup = !_showDup); _load(); }),
                     _SmartChip(
+                        label: 'Smart Search',
+                        selected: _searchMode == 'smart',
+                        icon: Icons.psychology_rounded,
+                        onTap: () { setState(() => _searchMode = _searchMode == 'basic' ? 'smart' : 'basic'); _load(); }),
+                    _SmartChip(
                         label: _sort == 'title' ? 'Sort: Title' : _sort == 'recent' ? 'Sort: Recent' : 'Sort: Pinned',
                         selected: _sort != 'title',
                         icon: Icons.sort_rounded,
@@ -335,6 +344,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               _tagCtrl.clear();
                               _searchCtrl.clear();
                               _sort = 'title';
+                              _searchMode = 'basic';
                             });
                             _load();
                           }),

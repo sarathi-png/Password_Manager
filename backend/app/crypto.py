@@ -80,3 +80,59 @@ def decrypt(ciphertext: str) -> str:
 
 def generate_master_key_b64() -> str:
     return base64.b64encode(secrets.token_bytes(32)).decode()
+
+
+def build_search_vector(entry, include_password: bool = False) -> str:
+    """Build a search vector string for PostgreSQL full-text search.
+    
+    Concatenates decrypted fields: title, url, host, registrable_domain, 
+    username, notes, and optionally password.
+    """
+    parts = []
+    if entry.title:
+        parts.append(entry.title)
+    if entry.url:
+        parts.append(entry.url)
+    if entry.host:
+        parts.append(entry.host)
+    if entry.registrable_domain:
+        parts.append(entry.registrable_domain)
+    if entry.username_cipher:
+        try:
+            parts.append(decrypt(entry.username_cipher))
+        except Exception:
+            pass
+    if entry.notes_cipher:
+        try:
+            parts.append(decrypt(entry.notes_cipher))
+        except Exception:
+            pass
+    if include_password and entry.password_cipher:
+        try:
+            parts.append(decrypt(entry.password_cipher))
+        except Exception:
+            pass
+    return " ".join(parts)
+
+
+def build_search_vector_plain(title: str = "", url: str = "", host: str = "", 
+                               registrable_domain: str = "", username: str = "", 
+                               notes: str = "", password: str = "", 
+                               include_password: bool = False) -> str:
+    """Build search vector from plaintext fields (for import)."""
+    parts = []
+    if title:
+        parts.append(title)
+    if url:
+        parts.append(url)
+    if host:
+        parts.append(host)
+    if registrable_domain:
+        parts.append(registrable_domain)
+    if username:
+        parts.append(username)
+    if notes:
+        parts.append(notes)
+    if include_password and password:
+        parts.append(password)
+    return " ".join(parts)

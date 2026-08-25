@@ -1,6 +1,19 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.types import TypeDecorator, Text as TextType
+
+
+class SearchVectorType(TypeDecorator):
+    """Type that uses TSVECTOR on PostgreSQL and Text on SQLite."""
+    impl = TextType
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(TSVECTOR())
+        return dialect.type_descriptor(TextType())
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -42,6 +55,9 @@ class User(Base):
     # scope: district_id set → district employee (sees district+blocks); block_id set → block employee (sees only its block)
     district_id: Mapped[int | None] = mapped_column(ForeignKey("districts.id"), nullable=True, index=True)
     block_id: Mapped[int | None] = mapped_column(ForeignKey("blocks.id"), nullable=True, index=True)
+
+    # smart search: include password in search vector (opt-in per user)
+    search_include_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     district: Mapped[District | None] = relationship(foreign_keys=[district_id])
     block: Mapped[Block | None] = relationship(foreign_keys=[block_id])
@@ -90,6 +106,9 @@ class PasswordEntry(Base):
     district_id: Mapped[int | None] = mapped_column(ForeignKey("districts.id"), nullable=True, index=True)
     block_id: Mapped[int | None] = mapped_column(ForeignKey("blocks.id"), nullable=True, index=True)
     is_duplicate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # full-text search vector (PostgreSQL TSVECTOR, SQLite Text)
+    search_vector: Mapped[str | None] = mapped_column(SearchVectorType, nullable=True)
 
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     owner: Mapped[User] = relationship(back_populates="entries")

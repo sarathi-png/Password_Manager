@@ -258,6 +258,7 @@ function shell(title, subtitle, content, activeNav) {
               <div class="name">${escapeHtml(state.user?.username)}</div>
               <div class="role">Admin</div>
             </div>
+            <button class="icon-btn" id="settings-btn" title="Settings">${ICONS.edit}</button>
             <button class="icon-btn" id="logout-btn" title="Sign out">${ICONS.log}</button>
           </div>
         </div>
@@ -278,6 +279,8 @@ function bindShell() {
   });
   const logoutBtn = document.getElementById("logout-btn");
   if (logoutBtn) logoutBtn.addEventListener("click", () => logout(true));
+  const settingsBtn = document.getElementById("settings-btn");
+  if (settingsBtn) settingsBtn.addEventListener("click", openSettingsModal);
 }
 
 function logout(silent = true) {
@@ -289,11 +292,54 @@ function logout(silent = true) {
   if (!silent) toast("Signed out");
 }
 
+async function openSettingsModal() {
+  try {
+    const user = await api("/api/auth/me");
+    openModal(`
+      <div class="modal-head">
+        <div class="modal-title">Settings</div>
+        <button class="modal-close" data-close="1">×</button>
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:normal">
+          <input type="checkbox" id="search-include-password" ${user.search_include_password ? "checked" : ""} />
+          <span>Include passwords in smart search</span>
+        </label>
+        <div style="font-size:12px;color:var(--text-3);margin-top:4px">When enabled, smart search will also match against decrypted passwords. Requires Smart Search toggle in Vault.</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close="1">Cancel</button>
+        <button class="btn btn-primary" id="save-settings">Save</button>
+      </div>
+    `);
+    document.getElementById("save-settings").addEventListener("click", async () => {
+      const includePassword = document.getElementById("search-include-password").checked;
+      try {
+        await api("/api/users/me", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ search_include_password: includePassword }),
+        });
+        state.user.search_include_password = includePassword;
+        localStorage.setItem("vault_user", JSON.stringify(state.user));
+        toast("Settings saved", "success");
+        closeModal();
+      } catch (ex) {
+        toast(ex.message, "error");
+      }
+    });
+  } catch (ex) {
+    toast(ex.message, "error");
+  }
+}
+
 /* ---------------- Vault view ---------------- */
 
 async function loadEntries() {
   const params = new URLSearchParams();
   if (state.filters.q) params.set("q", state.filters.q);
+  if (state.filters.search_mode) params.set("search_mode", state.filters.search_mode);
+  if (state.filters.include_password) params.set("include_password", "true");
   if (state.filters.category) params.set("category", state.filters.category);
   if (state.filters.district_id) params.set("district_id", state.filters.district_id);
   if (state.filters.block_id) params.set("block_id", state.filters.block_id);
@@ -344,6 +390,10 @@ function renderVault() {
 
     <div class="toolbar">
       <div class="search-box">${ICONS.search}<input id="search" placeholder="Search name/URL/tag… (smart)" value="${escapeHtml(state.filters.q)}" /></div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px" title="Use PostgreSQL full-text search (username, notes, password*)">
+        <input type="checkbox" id="smart-search-toggle" ${state.filters.search_mode === "smart" ? "checked" : ""} />
+        <span>Smart</span>
+      </label>
       <input id="tag-search" placeholder="Tag" value="${escapeHtml(state.filters.tag)}" style="max-width:140px" class="input" />
       <button class="btn btn-primary" id="import-btn">${ICONS.up} Import</button>
       <button class="btn btn-ghost" id="export-csv-btn">${ICONS.down} CSV</button>
@@ -506,18 +556,24 @@ function bindVaultEvents() {
   const favChk = document.getElementById("filter-fav");
   const sortSel = document.getElementById("filter-sort");
   const clearBtn = document.getElementById("clear-filters");
+  const smartSearchToggle = document.getElementById("smart-search-toggle");
   search.addEventListener("input", debounce(async () => {
     state.filters.q = search.value.trim();
     await loadEntries();
     renderEntryRows();
   }, 280));
+  if (smartSearchToggle) smartSearchToggle.addEventListener("change", async () => {
+    state.filters.search_mode = smartSearchToggle.checked ? "smart" : "basic";
+    await loadEntries();
+    renderEntryRows();
+  });
   if(tagSearch) tagSearch.addEventListener("input", debounce(async()=>{ state.filters.tag=tagSearch.value.trim(); await loadEntries(); renderEntryRows();},300));
   if(districtSel) districtSel.addEventListener("change", async()=>{ state.filters.district_id=districtSel.value; state.filters.block_id=""; await loadEntries(); renderVault(); });
   if(blockSel) blockSel.addEventListener("change", async()=>{ state.filters.block_id=blockSel.value; await loadEntries(); renderEntryRows(); });
   if(dupChk) dupChk.addEventListener("change", async()=>{ state.filters.is_duplicate=dupChk.checked?"true":""; await loadEntries(); renderEntryRows(); });
   if(favChk) favChk.addEventListener("change", async()=>{ state.filters.is_favorite=favChk.checked; await loadEntries(); renderEntryRows(); });
   if(sortSel) sortSel.addEventListener("change", async()=>{ state.filters.sort=sortSel.value; await loadEntries(); renderEntryRows(); });
-  if(clearBtn) clearBtn.addEventListener("click", async()=>{ state.filters={q:"",category:"",district_id:"",block_id:"",is_duplicate:"",tag:"",is_favorite:false,sort:"title"}; await loadEntries(); if(state.grouped) await loadGroups(); renderVault(); });
+  if(clearBtn) clearBtn.addEventListener("click", async()=>{ state.filters={q:"",search_mode:"basic",include_password:false,category:"",district_id:"",block_id:"",is_duplicate:"",tag:"",is_favorite:false,sort:"title"}; await loadEntries(); if(state.grouped) await loadGroups(); renderVault(); });
   const groupedToggle=document.getElementById("grouped-toggle"); if(groupedToggle) groupedToggle.addEventListener("change", async()=>{ state.grouped=groupedToggle.checked; if(state.grouped) await loadGroups(); renderGrouped(); document.getElementById("flat-wrap").style.display=state.grouped?"none":"block"; document.getElementById("grouped-wrap").style.display=state.grouped?"block":"none"; if(!state.grouped) renderEntryRows(); });
   const bulkDistrict=document.getElementById("bulk-district"); const bulkBlock=document.getElementById("bulk-block"); const bulkCat=document.getElementById("bulk-cat"); const bulkNewCat=document.getElementById("bulk-new-cat"); const bulkAssign=document.getElementById("bulk-assign"); const bulkClear=document.getElementById("bulk-clear"); const selectAll=document.getElementById("select-all");
   if(bulkAssign) bulkAssign.addEventListener("click", async()=>{

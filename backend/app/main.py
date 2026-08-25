@@ -80,6 +80,30 @@ def _ensure_migrations():
             except Exception:
                 logger.exception("Failed to update sort_order for system categories")
 
+        # password_entries search_vector column + GIN index (PostgreSQL only)
+        if "password_entries" in insp.get_table_names():
+            _add_column("password_entries", "search_vector", "TSVECTOR")
+            # Create GIN index for full-text search (PostgreSQL only)
+            try:
+                with engine.begin() as conn:
+                    # Check if index exists first
+                    result = conn.execute(text("""
+                        SELECT 1 FROM pg_indexes WHERE indexname = 'ix_password_entries_search_vector'
+                    """))
+                    if not result.fetchone():
+                        conn.execute(text("""
+                            CREATE INDEX ix_password_entries_search_vector 
+                            ON password_entries USING GIN (search_vector)
+                        """))
+                        logger.info("Created GIN index on password_entries.search_vector")
+            except Exception:
+                # SQLite doesn't support GIN index, ignore
+                logger.debug("GIN index creation skipped (likely SQLite)")
+
+        # users search_include_password column
+        if "users" in insp.get_table_names():
+            _add_column("users", "search_include_password", "BOOLEAN NOT NULL DEFAULT FALSE")
+
         try:
             with engine.begin() as conn:
                 conn.execute(text("UPDATE password_entries SET is_duplicate = FALSE WHERE is_duplicate IS NULL"))
@@ -92,7 +116,8 @@ def _ensure_migrations():
         if "password_entries" in insp.get_table_names():
             have = {c["name"] for c in inspect(engine).get_columns("password_entries")}
             required = {"district_id", "block_id", "is_duplicate", "host", "exact_host",
-                        "registrable_domain", "host_group_key", "smart_category_id", "smart_subcategory_id"}
+                        "registrable_domain", "host_group_key", "smart_category_id", "smart_subcategory_id",
+                        "search_vector"}
             missing = required - have
             if missing:
                 logger.error("Schema verification FAILED — password_entries still missing columns: %s", sorted(missing))

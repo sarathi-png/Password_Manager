@@ -41,7 +41,15 @@ def list_avatars():
 
 @router.get("", response_model=list[ProfileOutWithPin])
 def list_profiles(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """List profiles the current user has access to."""
+    """List profiles. Admin sees all; employees see only their assigned profiles."""
+    if user.role == "admin":
+        profiles = db.query(Profile).all()
+        result = []
+        for profile in profiles:
+            out = ProfileOutWithPin.model_validate(profile)
+            out.user_count = db.query(UserProfile).filter(UserProfile.profile_id == profile.id).count()
+            result.append(out)
+        return result
     user_profiles = (
         db.query(UserProfile, Profile)
         .join(Profile, UserProfile.profile_id == Profile.id)
@@ -67,8 +75,6 @@ def create_profile(body: ProfileCreate, user: User = Depends(get_current_user), 
     )
     db.add(profile)
     db.flush()
-    # auto-assign creator
-    db.add(UserProfile(user_id=user.id, profile_id=profile.id))
     db.add(AuditLog(user_id=user.id, action="profile.create", target=profile.name, detail=f"profile_id={profile.id}"))
     db.commit()
     db.refresh(profile)
@@ -80,10 +86,10 @@ def get_profile(profile_id: int, user: User = Depends(get_current_user), db: Ses
     profile = db.get(Profile, profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    # must have access
-    up = db.query(UserProfile).filter(UserProfile.user_id == user.id, UserProfile.profile_id == profile_id).first()
-    if not up:
-        raise HTTPException(status_code=403, detail="No access to this profile")
+    if user.role != "admin":
+        up = db.query(UserProfile).filter(UserProfile.user_id == user.id, UserProfile.profile_id == profile_id).first()
+        if not up:
+            raise HTTPException(status_code=403, detail="No access to this profile")
     out = ProfileOut.model_validate(profile)
     out.user_count = db.query(UserProfile).filter(UserProfile.profile_id == profile_id).count()
     out.entry_count = db.query(PasswordEntry).filter(PasswordEntry.profile_id == profile_id).count()
@@ -95,9 +101,10 @@ def update_profile(profile_id: int, body: ProfileUpdate, user: User = Depends(ge
     profile = db.get(Profile, profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    up = db.query(UserProfile).filter(UserProfile.user_id == user.id, UserProfile.profile_id == profile_id).first()
-    if not up:
-        raise HTTPException(status_code=403, detail="No access to this profile")
+    if user.role != "admin":
+        up = db.query(UserProfile).filter(UserProfile.user_id == user.id, UserProfile.profile_id == profile_id).first()
+        if not up:
+            raise HTTPException(status_code=403, detail="No access to this profile")
     if body.name is not None:
         profile.name = body.name
     if body.avatar_url is not None:

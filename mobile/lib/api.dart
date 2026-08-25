@@ -195,13 +195,27 @@ class ApiClient {
     return list.map((e) => e as Map<String, dynamic>).toList();
   }
 
-  Future<List<Map<String, dynamic>>> listGroups({String query = '', int? districtId, int? blockId, String searchMode = 'basic', int? profileId}) async {
+  Future<List<Map<String, dynamic>>> listGroups({
+    String query = '',
+    int? districtId,
+    int? blockId,
+    String searchMode = 'basic',
+    int? profileId,
+    String category = '',
+    bool? isDuplicate,
+    bool? isFavorite,
+    String? tag,
+  }) async {
     final params = <String, String>{
       if (query.isNotEmpty) 'q': query,
       if (searchMode != 'basic') 'search_mode': searchMode,
       if (districtId != null) 'district_id': districtId.toString(),
       if (blockId != null) 'block_id': blockId.toString(),
       if (profileId != null) 'profile_id': profileId.toString(),
+      if (category.isNotEmpty) 'category': category,
+      if (isDuplicate != null) 'is_duplicate': isDuplicate.toString(),
+      if (isFavorite != null) 'is_favorite': isFavorite.toString(),
+      if (tag != null && tag.isNotEmpty) 'tag': tag,
     };
     final uri = _uri('/api/entries/groups').replace(queryParameters: params.isEmpty ? null : params);
     final resp = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 60));

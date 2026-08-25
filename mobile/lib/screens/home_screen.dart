@@ -74,7 +74,15 @@ class _HomeScreenState extends State<HomeScreen> {
       List<Map<String, dynamic>> groups = [];
       if (_grouped) {
         try {
-          groups = await widget.api.listGroups(query: _searchCtrl.text.trim(), searchMode: _searchMode, profileId: widget.api.currentProfileId);
+          groups = await widget.api.listGroups(
+            query: _searchCtrl.text.trim(),
+            searchMode: _searchMode,
+            profileId: widget.api.currentProfileId,
+            category: _category,
+            isDuplicate: _showDup ? true : null,
+            isFavorite: _showFav ? true : null,
+            tag: _tagCtrl.text.trim().isEmpty ? null : _tagCtrl.text.trim(),
+          );
         } catch (_) {
           groups = [];
         }

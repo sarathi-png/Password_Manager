@@ -416,6 +416,7 @@ function renderVault() {
       <button class="btn btn-primary" id="import-btn">${ICONS.up} Import</button>
       <button class="btn btn-ghost" id="export-csv-btn">${ICONS.down} CSV</button>
       <button class="btn btn-ghost" id="export-xlsx-btn">${ICONS.down} Excel</button>
+      <button class="btn btn-ghost" id="delete-all-btn" style="color:#F87171">${ICONS.trash} Delete all</button>
       <button class="btn btn-ghost" id="add-btn">${ICONS.plus} New entry</button>
     </div>
     <div class="toolbar" style="margin-top:10px">
@@ -639,6 +640,15 @@ function bindVaultEvents() {
   document.getElementById("import-btn").addEventListener("click", () => openImportWizard());
   document.getElementById("export-csv-btn").addEventListener("click", () => exportVault("csv"));
   document.getElementById("export-xlsx-btn").addEventListener("click", () => exportVault("xlsx"));
+  document.getElementById("delete-all-btn").addEventListener("click", async()=>{
+    const count = state.entries.length;
+    if(!count) return toast("No entries to delete","info");
+    if(!confirm(`Delete ALL ${count} entries? This cannot be undone.`)) return;
+    try{
+      const res = await api("/api/entries/all",{method:"DELETE"});
+      toast(`Deleted ${res.deleted} entries`,"success"); state.selectedIds.clear(); await loadEntries(); if(state.grouped) await loadGroups(); renderVault();
+    }catch(e){toast(e.message,"error");}
+  });
 }
 
 async function exportVault(format) {

@@ -490,6 +490,18 @@ def bulk_delete(
     return {"deleted": deleted}
 
 
+@router.delete("/all", response_model=dict)
+def delete_all_entries(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    count = db.query(PasswordEntry).count()
+    db.query(PasswordEntry).delete(synchronize_session=False)
+    db.commit()
+    _log(db, admin, "entry.delete_all", f"deleted {count} entries")
+    return {"deleted": count}
+
+
 @router.put("/{entry_id}/category", response_model=dict)
 def set_global_category(
     entry_id: int,

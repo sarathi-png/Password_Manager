@@ -1,12 +1,16 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.types import TypeDecorator, Text as TextType
 
 
 class SearchVectorType(TypeDecorator):
-    """Type that uses TSVECTOR on PostgreSQL and Text on SQLite."""
+    """Type that uses TSVECTOR on PostgreSQL and Text on SQLite.
+
+    Plain text strings are automatically wrapped with to_tsvector() on PostgreSQL
+    so that INSERT/UPDATE works without callers needing to know the dialect.
+    """
     impl = TextType
     cache_ok = True
 
@@ -14,6 +18,11 @@ class SearchVectorType(TypeDecorator):
         if dialect.name == 'postgresql':
             return dialect.type_descriptor(TSVECTOR())
         return dialect.type_descriptor(TextType())
+
+    def process_bind_param(self, value, dialect):
+        if dialect.name == 'postgresql' and value is not None and isinstance(value, str):
+            return func.to_tsvector('english', value)
+        return value
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base

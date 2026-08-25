@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 from typing import Literal
 
-from ..crypto import decrypt, encrypt, build_search_vector
+from ..crypto import decrypt, encrypt, build_search_vector, build_search_vector_plain
 from ..database import get_db
 from ..deps import get_current_user, require_admin
 from ..models import AuditLog, Block, Category, District, PasswordEntry, User, UserCategoryOverride, UserEntryMeta, UserEntryTag
@@ -375,6 +375,14 @@ def create_entry(body: EntryIn, admin: User = Depends(require_admin), db: Sessio
         smart_category_id=body.smart_category_id,
         smart_subcategory_id=body.smart_subcategory_id,
         profile_id=body.profile_id,
+        search_vector=build_search_vector_plain(
+            title=body.title,
+            url=body.url,
+            host=h,
+            registrable_domain=reg,
+            username=body.username,
+            notes=body.notes,
+        ),
     )
     db.add(entry)
     db.flush()
@@ -419,6 +427,14 @@ def update_entry(
     entry.smart_category_id = body.smart_category_id
     entry.smart_subcategory_id = body.smart_subcategory_id
     entry.profile_id = body.profile_id
+    entry.search_vector = build_search_vector_plain(
+        title=body.title,
+        url=body.url,
+        host=h,
+        registrable_domain=reg,
+        username=body.username,
+        notes=body.notes,
+    )
     _log(db, admin, "entry.update", entry.title)
     db.commit()
     db.refresh(entry)

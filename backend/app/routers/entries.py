@@ -181,7 +181,7 @@ def list_entries(
     query = db.query(PasswordEntry)
     query = _scope_filter(query, user)
     if profile_id is not None:
-        query = query.filter(PasswordEntry.profile_id == profile_id)
+        query = query.filter(or_(PasswordEntry.profile_id == profile_id, PasswordEntry.profile_id.is_(None)))
     if q:
         if search_mode == "smart":
             # Use PostgreSQL full-text search
@@ -260,7 +260,7 @@ def list_groups(
     query = db.query(PasswordEntry)
     query = _scope_filter(query, user)
     if profile_id is not None:
-        query = query.filter(PasswordEntry.profile_id == profile_id)
+        query = query.filter(or_(PasswordEntry.profile_id == profile_id, PasswordEntry.profile_id.is_(None)))
     if q:
         if search_mode == "smart":
             tsquery = func.websearch_to_tsquery('english', q)
@@ -473,6 +473,26 @@ def bulk_assign(
         updated += 1
     db.commit()
     _log(db, admin, "entry.bulk_assign", f"{updated} entries", f"district={district_id} block={block_id} cat={category_id}")
+    return {"updated": updated}
+
+
+@router.post("/bulk-assign-profile", response_model=dict)
+def bulk_assign_profile(
+    entry_ids: list[int],
+    profile_id: int | None = None,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if not entry_ids:
+        raise HTTPException(status_code=400, detail="No entries selected")
+    if profile_id is not None and db.get(Profile, profile_id) is None:
+        raise HTTPException(status_code=400, detail="Profile not found")
+    updated = 0
+    for e in db.query(PasswordEntry).filter(PasswordEntry.id.in_(entry_ids)).all():
+        e.profile_id = profile_id
+        updated += 1
+    db.commit()
+    _log(db, admin, "entry.bulk_assign_profile", f"{updated} entries", f"profile_id={profile_id}")
     return {"updated": updated}
 
 

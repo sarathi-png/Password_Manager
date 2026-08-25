@@ -434,6 +434,7 @@ function renderVault() {
       <select id="bulk-cat" class="input" style="max-width:180px"><option value="">Category</option>${catFlat().map(c=>`<option value="${c.id}">${escapeHtml(c.name)}${c.parent_id?" (sub)":""}</option>`).join("")}</select>
       <input id="bulk-new-cat" class="input" style="max-width:170px" placeholder="or new category…" />
       <button class="btn btn-primary" id="bulk-assign">Assign</button>
+      <select id="bulk-profile" class="input" style="max-width:160px"><option value="">Profile</option>${state.profiles.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("")}<option value="none">— No profile</option></select>
       <button class="btn btn-ghost" id="bulk-delete" style="color:#F87171">${ICONS.trash} Delete</button>
       <button class="btn btn-ghost" id="bulk-clear">Clear</button>
     </div>
@@ -595,7 +596,7 @@ function bindVaultEvents() {
   if(sortSel) sortSel.addEventListener("change", async()=>{ state.filters.sort=sortSel.value; await loadEntries(); refreshCurrentView(); });
   if(clearBtn) clearBtn.addEventListener("click", async()=>{ state.filters={q:"",search_mode:"basic",include_password:false,category:"",district_id:"",block_id:"",is_duplicate:"",tag:"",is_favorite:false,sort:"title"}; await loadEntries(); if(state.grouped) await loadGroups(); renderVault(); });
   const groupedToggle=document.getElementById("grouped-toggle"); if(groupedToggle) groupedToggle.addEventListener("change", async()=>{ state.grouped=groupedToggle.checked; if(state.grouped) await loadGroups(); renderGrouped(); document.getElementById("flat-wrap").style.display=state.grouped?"none":"block"; document.getElementById("grouped-wrap").style.display=state.grouped?"block":"none"; if(!state.grouped) renderEntryRows(); });
-  const bulkDistrict=document.getElementById("bulk-district"); const bulkBlock=document.getElementById("bulk-block"); const bulkCat=document.getElementById("bulk-cat"); const bulkNewCat=document.getElementById("bulk-new-cat"); const bulkAssign=document.getElementById("bulk-assign"); const bulkDelete=document.getElementById("bulk-delete"); const bulkClear=document.getElementById("bulk-clear"); const selectAll=document.getElementById("select-all");
+  const bulkDistrict=document.getElementById("bulk-district"); const bulkBlock=document.getElementById("bulk-block"); const bulkCat=document.getElementById("bulk-cat"); const bulkNewCat=document.getElementById("bulk-new-cat"); const bulkAssign=document.getElementById("bulk-assign"); const bulkProfile=document.getElementById("bulk-profile"); const bulkDelete=document.getElementById("bulk-delete"); const bulkClear=document.getElementById("bulk-clear"); const selectAll=document.getElementById("select-all");
   if(bulkAssign) bulkAssign.addEventListener("click", async()=>{
     const ids=[...state.selectedIds]; if(!ids.length) return;
     try{
@@ -613,6 +614,18 @@ function bindVaultEvents() {
       if(!qp.length) return toast("Choose district, block or category","error");
       await api(`/api/entries/bulk-assign?${qp.join("&")}`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ids)});
       toast(`Assigned ${ids.length} entries`,"success"); state.selectedIds.clear(); await loadEntries(); refreshCurrentView(); document.getElementById("bulk-bar").style.display="none";
+    }catch(e){toast(e.message,"error");}
+  });
+  if(bulkProfile) bulkProfile.addEventListener("change", async()=>{
+    const ids=[...state.selectedIds]; if(!ids.length) return toast("Select entries first","info");
+    const val=bulkProfile.value;
+    const pid=val==="none"?null:val?Number(val):null;
+    if(pid===null && val==="") return;
+    try{
+      const qp=pid!==null?`?profile_id=${pid}`:"";
+      await api(`/api/entries/bulk-assign-profile${qp}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(ids)});
+      toast(`Assigned ${ids.length} entries to ${val==="none"?"no profile":state.profiles.find(p=>p.id===pid)?.name||"profile"}`,"success");
+      bulkProfile.value=""; state.selectedIds.clear(); await loadEntries(); if(state.grouped) await loadGroups(); renderVault();
     }catch(e){toast(e.message,"error");}
   });
   if(bulkDelete) bulkDelete.addEventListener("click", async()=>{

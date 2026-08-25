@@ -97,6 +97,7 @@ class EntryIn(BaseModel):
     block_id: int | None = None
     smart_category_id: int | None = None
     smart_subcategory_id: int | None = None
+    profile_id: int | None = None
 
 
 class EntryOut(BaseModel):
@@ -122,6 +123,7 @@ class EntryOut(BaseModel):
     district_name: str | None = None
     block_name: str | None = None
     is_duplicate: bool = False
+    profile_id: int | None = None
     created_at: object
     updated_at: object
     tags: list[str] = Field(default_factory=list)
@@ -147,6 +149,7 @@ class EntrySummary(BaseModel):
     district_name: str | None = None
     block_name: str | None = None
     is_duplicate: bool = False
+    profile_id: int | None = None
     tags: list[str] = Field(default_factory=list)
     is_favorite: bool = False
     is_pinned: bool = False
@@ -233,3 +236,47 @@ class AuditOut(BaseModel):
     target: str
     detail: str
     ip: str
+
+
+# --- Profile schemas ---
+
+class ProfileCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    avatar_url: str = Field(default="", max_length=512)
+
+
+class ProfileUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    avatar_url: str | None = Field(default=None, max_length=512)
+
+
+class ProfileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    avatar_url: str
+    created_by_id: int | None = None
+    created_at: object
+    user_count: int = 0
+    entry_count: int = 0
+
+
+class UserProfileCreate(BaseModel):
+    user_id: int
+
+
+class UserProfileSetPin(BaseModel):
+    pin: str = Field(min_length=4, max_length=8, pattern=r"^\d+$")
+
+
+class ProfileSelectRequest(BaseModel):
+    pin: str | None = None
+
+
+class ProfileOutWithPin(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    avatar_url: str
+    has_pin: bool = False
+    user_count: int = 0

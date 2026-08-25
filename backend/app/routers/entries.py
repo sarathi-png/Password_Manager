@@ -108,6 +108,7 @@ def _to_summary(e: PasswordEntry, d_map, b_map, tag_map, meta_map, cat_map) -> E
         district_name=d_map.get(e.district_id) if e.district_id else None,
         block_name=b_map.get(e.block_id) if e.block_id else None,
         is_duplicate=e.is_duplicate,
+        profile_id=e.profile_id,
         tags=tag_map.get(e.id, []),
         is_favorite=meta.is_favorite if meta else False,
         is_pinned=meta.is_pinned if meta else False,
@@ -145,6 +146,7 @@ def _to_out(e: PasswordEntry, db: Session, user: User) -> EntryOut:
         district_name=d_name,
         block_name=b_name,
         is_duplicate=e.is_duplicate,
+        profile_id=e.profile_id,
         created_at=e.created_at,
         updated_at=e.updated_at,
         tags=tags,
@@ -172,11 +174,14 @@ def list_entries(
     sort: str = Query(default="title", pattern=r"^(title|updated|recent|favorite)$"),
     search_mode: Literal["basic", "smart"] = Query(default="basic"),
     include_password: bool = Query(default=False),
+    profile_id: int | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     query = db.query(PasswordEntry)
     query = _scope_filter(query, user)
+    if profile_id is not None:
+        query = query.filter(PasswordEntry.profile_id == profile_id)
     if q:
         if search_mode == "smart":
             # Use PostgreSQL full-text search
@@ -234,12 +239,15 @@ def list_groups(
     district_id: int | None = None,
     block_id: int | None = None,
     search_mode: Literal["basic", "smart"] = Query(default="basic"),
+    profile_id: int | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     # collapsed by registrable_domain, respects scope and effective category
     query = db.query(PasswordEntry)
     query = _scope_filter(query, user)
+    if profile_id is not None:
+        query = query.filter(PasswordEntry.profile_id == profile_id)
     if q:
         if search_mode == "smart":
             tsquery = func.websearch_to_tsquery('english', q)
@@ -335,6 +343,7 @@ def create_entry(body: EntryIn, admin: User = Depends(require_admin), db: Sessio
         host_group_key=(reg or h)[:255],
         smart_category_id=body.smart_category_id,
         smart_subcategory_id=body.smart_subcategory_id,
+        profile_id=body.profile_id,
     )
     db.add(entry)
     db.flush()
@@ -378,6 +387,7 @@ def update_entry(
     entry.host_group_key = (reg or h)[:255]
     entry.smart_category_id = body.smart_category_id
     entry.smart_subcategory_id = body.smart_subcategory_id
+    entry.profile_id = body.profile_id
     _log(db, admin, "entry.update", entry.title)
     db.commit()
     db.refresh(entry)

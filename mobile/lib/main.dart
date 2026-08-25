@@ -4,6 +4,7 @@ import 'api.dart';
 import 'models.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/profile_selector_screen.dart';
 import 'screens/settings_screen.dart';
 import 'theme.dart';
 
@@ -23,6 +24,7 @@ class _VaultAppState extends State<VaultApp> {
   final ApiClient _api = ApiClient();
   VaultUser? _user;
   bool _booted = false;
+  bool _profileSelected = false;
 
   @override
   void initState() {
@@ -65,11 +67,22 @@ class _VaultAppState extends State<VaultApp> {
   }
 
   void _onLoggedIn(VaultUser user) {
-    setState(() => _user = user);
+    setState(() {
+      _user = user;
+      _profileSelected = false;
+    });
+  }
+
+  void _onProfileSelected() {
+    setState(() => _profileSelected = true);
   }
 
   void _onLogout() {
-    setState(() => _user = null);
+    setState(() {
+      _user = null;
+      _profileSelected = false;
+      _api.currentProfileId = null;
+    });
   }
 
   @override
@@ -85,6 +98,9 @@ class _VaultAppState extends State<VaultApp> {
   Widget _buildRoot() {
     if (_user == null) {
       return LoginScreen(api: _api, onLoggedIn: _onLoggedIn);
+    }
+    if (!_profileSelected) {
+      return ProfileSelectorScreen(api: _api, onProfileSelected: _onProfileSelected);
     }
     return _MainShell(api: _api, user: _user!, onLogout: _onLogout);
   }

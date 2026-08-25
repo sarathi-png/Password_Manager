@@ -12,7 +12,7 @@ from . import security
 from .config import get_settings
 from .database import Base, SessionLocal, engine
 from .models import AuditLog, User
-from .routers import audit, auth, categories, districts, entries, import_export, users
+from .routers import audit, auth, categories, districts, entries, import_export, profiles, users
 from sqlalchemy import inspect, text
 
 logger = logging.getLogger("vault.migrations")
@@ -104,6 +104,46 @@ def _ensure_migrations():
         if "users" in insp.get_table_names():
             _add_column("users", "search_include_password", "BOOLEAN NOT NULL DEFAULT FALSE")
 
+        # password_entries profile_id column
+        if "password_entries" in insp.get_table_names():
+            _add_column("password_entries", "profile_id", "INTEGER")
+
+        # profiles table
+        if "profiles" not in insp.get_table_names():
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("""
+                        CREATE TABLE profiles (
+                            id SERIAL PRIMARY KEY,
+                            name VARCHAR(128) NOT NULL,
+                            avatar_url VARCHAR(512) NOT NULL DEFAULT '',
+                            created_by_id INTEGER,
+                            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                        )
+                    """))
+                logger.info("Created profiles table")
+            except Exception:
+                logger.debug("profiles table creation skipped (likely exists)")
+
+        # user_profiles table
+        if "user_profiles" not in insp.get_table_names():
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("""
+                        CREATE TABLE user_profiles (
+                            id SERIAL PRIMARY KEY,
+                            user_id INTEGER NOT NULL,
+                            profile_id INTEGER NOT NULL,
+                            pin_hash VARCHAR(128),
+                            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                        )
+                    """))
+                    conn.execute(text("CREATE INDEX ix_user_profiles_user_id ON user_profiles (user_id)"))
+                    conn.execute(text("CREATE INDEX ix_user_profiles_profile_id ON user_profiles (profile_id)"))
+                logger.info("Created user_profiles table")
+            except Exception:
+                logger.debug("user_profiles table creation skipped (likely exists)")
+
         try:
             with engine.begin() as conn:
                 conn.execute(text("UPDATE password_entries SET is_duplicate = FALSE WHERE is_duplicate IS NULL"))
@@ -117,7 +157,7 @@ def _ensure_migrations():
             have = {c["name"] for c in inspect(engine).get_columns("password_entries")}
             required = {"district_id", "block_id", "is_duplicate", "host", "exact_host",
                         "registrable_domain", "host_group_key", "smart_category_id", "smart_subcategory_id",
-                        "search_vector"}
+                        "search_vector", "profile_id"}
             missing = required - have
             if missing:
                 logger.error("Schema verification FAILED — password_entries still missing columns: %s", sorted(missing))
@@ -181,6 +221,7 @@ def create_app() -> FastAPI:
     app.include_router(categories.router)
     app.include_router(entries.router)
     app.include_router(import_export.router)
+    app.include_router(profiles.router)
     app.include_router(audit.router)
 
     @app.exception_handler(ValueError)

@@ -69,11 +69,12 @@ class _HomeScreenState extends State<HomeScreen> {
         sort: _sort,
         searchMode: _searchMode,
         includePassword: _includePassword,
+        profileId: widget.api.currentProfileId,
       );
       List<Map<String, dynamic>> groups = [];
       if (_grouped) {
         try {
-          groups = await widget.api.listGroups(query: _searchCtrl.text.trim(), searchMode: _searchMode);
+          groups = await widget.api.listGroups(query: _searchCtrl.text.trim(), searchMode: _searchMode, profileId: widget.api.currentProfileId);
         } catch (_) {
           groups = [];
         }

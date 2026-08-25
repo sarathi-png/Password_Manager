@@ -117,6 +117,10 @@ class PasswordEntry(Base):
     smart_category: Mapped[Category | None] = relationship(foreign_keys=[smart_category_id])
     smart_subcategory: Mapped[Category | None] = relationship(foreign_keys=[smart_subcategory_id])
 
+    # profile scoping; null = unassigned (legacy entries)
+    profile_id: Mapped[int | None] = mapped_column(ForeignKey("profiles.id"), nullable=True, index=True)
+    profile: Mapped[Profile | None] = relationship(back_populates="entries")
+
 
 class UserEntryTag(Base):
     """Private per-user manual tag (own). Works for both admin and employee, read-only entries but writable meta."""
@@ -175,3 +179,32 @@ class AuditLog(Base):
     target: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     detail: Mapped[str] = mapped_column(String(1024), nullable=False, default="")
     ip: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+
+
+class Profile(Base):
+    """Netflix-style profile: groups users and entries together."""
+    __tablename__ = "profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    avatar_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    created_by: Mapped[User | None] = relationship()
+    users: Mapped[list["UserProfile"]] = relationship(back_populates="profile", cascade="all, delete-orphan")
+    entries: Mapped[list["PasswordEntry"]] = relationship(back_populates="profile", cascade="all, delete-orphan")
+
+
+class UserProfile(Base):
+    """Join table: which users can access which profiles, with per-profile PIN."""
+    __tablename__ = "user_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    pin_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    user: Mapped[User] = relationship()
+    profile: Mapped[Profile] = relationship(back_populates="users")

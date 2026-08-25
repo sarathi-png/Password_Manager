@@ -128,7 +128,7 @@ class ApiClient {
     return user!;
   }
 
-  Future<List<VaultEntry>> listEntries({String query = '', String category = '', int? districtId, int? blockId, bool? isDuplicate, String? tag, bool? isFavorite, bool? isPinned, String sort = 'title', String searchMode = 'basic', bool includePassword = false}) async {
+  Future<List<VaultEntry>> listEntries({String query = '', String category = '', int? districtId, int? blockId, bool? isDuplicate, String? tag, bool? isFavorite, bool? isPinned, String sort = 'title', String searchMode = 'basic', bool includePassword = false, int? profileId}) async {
     final params = <String, String>{
       if (query.isNotEmpty) 'q': query,
       if (searchMode != 'basic') 'search_mode': searchMode,
@@ -141,6 +141,7 @@ class ApiClient {
       if (isFavorite != null) 'is_favorite': isFavorite.toString(),
       if (isPinned != null) 'is_pinned': isPinned.toString(),
       if (sort != 'title') 'sort': sort,
+      if (profileId != null) 'profile_id': profileId.toString(),
     };
     final uri = _uri('/api/entries').replace(queryParameters: params.isEmpty ? null : params);
     final resp = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 60));
@@ -194,12 +195,13 @@ class ApiClient {
     return list.map((e) => e as Map<String, dynamic>).toList();
   }
 
-  Future<List<Map<String, dynamic>>> listGroups({String query = '', int? districtId, int? blockId, String searchMode = 'basic'}) async {
+  Future<List<Map<String, dynamic>>> listGroups({String query = '', int? districtId, int? blockId, String searchMode = 'basic', int? profileId}) async {
     final params = <String, String>{
       if (query.isNotEmpty) 'q': query,
       if (searchMode != 'basic') 'search_mode': searchMode,
       if (districtId != null) 'district_id': districtId.toString(),
       if (blockId != null) 'block_id': blockId.toString(),
+      if (profileId != null) 'profile_id': profileId.toString(),
     };
     final uri = _uri('/api/entries/groups').replace(queryParameters: params.isEmpty ? null : params);
     final resp = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 60));
@@ -239,5 +241,44 @@ class ApiClient {
     _check(resp);
     final data = _decode(resp) as Map<String, dynamic>;
     user = VaultUser.fromJson(data);
+  }
+
+  // --- Profiles ---
+
+  int? currentProfileId;
+
+  Future<List<VaultProfile>> listProfiles() async {
+    final resp = await http.get(_uri('/api/profiles'), headers: _headers).timeout(const Duration(seconds: 60));
+    _check(resp);
+    final list = _decode(resp) as List;
+    return list.map((e) => VaultProfile.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<VaultProfile> createProfile(String name, {String avatarUrl = ''}) async {
+    final resp = await http.post(_uri('/api/profiles'), headers: _headers, body: jsonEncode({'name': name, 'avatar_url': avatarUrl})).timeout(const Duration(seconds: 60));
+    _check(resp);
+    return VaultProfile.fromJson(_decode(resp) as Map<String, dynamic>);
+  }
+
+  Future<Map<String, dynamic>> selectProfile(int profileId, {String? pin}) async {
+    final body = <String, dynamic>{};
+    if (pin != null) body['pin'] = pin;
+    final resp = await http.post(_uri('/api/profiles/$profileId/select'), headers: _headers, body: jsonEncode(body)).timeout(const Duration(seconds: 60));
+    _check(resp);
+    final data = _decode(resp) as Map<String, dynamic>;
+    currentProfileId = profileId;
+    return data;
+  }
+
+  Future<void> setProfilePin(int profileId, String pin) async {
+    final resp = await http.post(_uri('/api/profiles/$profileId/pin'), headers: _headers, body: jsonEncode({'pin': pin})).timeout(const Duration(seconds: 60));
+    _check(resp);
+  }
+
+  Future<List<String>> listAvatars() async {
+    final resp = await http.get(_uri('/api/profiles/avatars'), headers: _headers).timeout(const Duration(seconds: 60));
+    _check(resp);
+    final data = _decode(resp) as Map<String, dynamic>;
+    return (data['avatars'] as List).map((e) => e.toString()).toList();
   }
 }

@@ -47,6 +47,7 @@ class VaultEntry {
   final String? districtName;
   final String? blockName;
   final bool isDuplicate;
+  final int? profileId;
   final List<String> tags;
   final bool isFavorite;
   final bool isPinned;
@@ -65,6 +66,7 @@ class VaultEntry {
     this.districtName,
     this.blockName,
     this.isDuplicate = false,
+    this.profileId,
     this.tags = const [],
     this.isFavorite = false,
     this.isPinned = false,
@@ -84,6 +86,7 @@ class VaultEntry {
         districtName: json['district_name'] as String?,
         blockName: json['block_name'] as String?,
         isDuplicate: json['is_duplicate'] as bool? ?? false,
+        profileId: json['profile_id'] as int?,
         tags: (json['tags'] as List?)?.map((e) => e.toString()).toList() ?? [],
         isFavorite: json['is_favorite'] as bool? ?? false,
         isPinned: json['is_pinned'] as bool? ?? false,
@@ -103,6 +106,7 @@ class VaultEntry {
         districtName: json['district_name'] as String?,
         blockName: json['block_name'] as String?,
         isDuplicate: json['is_duplicate'] as bool? ?? false,
+        profileId: json['profile_id'] as int?,
         tags: (json['tags'] as List?)?.map((e) => e.toString()).toList() ?? [],
         isFavorite: json['is_favorite'] as bool? ?? false,
         isPinned: json['is_pinned'] as bool? ?? false,
@@ -157,4 +161,29 @@ String displayNameForDomain(String reg) {
   if (_brandNames.containsKey(core)) return _brandNames[core]!;
   if (core.isEmpty) return reg;
   return core[0].toUpperCase() + core.substring(1);
+}
+
+
+class VaultProfile {
+  final int id;
+  final String name;
+  final String avatarUrl;
+  final bool hasPin;
+  final int userCount;
+
+  VaultProfile({
+    required this.id,
+    required this.name,
+    this.avatarUrl = '',
+    this.hasPin = false,
+    this.userCount = 0,
+  });
+
+  factory VaultProfile.fromJson(Map<String, dynamic> json) => VaultProfile(
+        id: json['id'] as int,
+        name: json['name'] as String? ?? '',
+        avatarUrl: json['avatar_url'] as String? ?? '',
+        hasPin: json['has_pin'] as bool? ?? false,
+        userCount: json['user_count'] as int? ?? 0,
+      );
 }

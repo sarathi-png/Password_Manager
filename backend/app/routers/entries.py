@@ -181,7 +181,7 @@ def list_entries(
     query = db.query(PasswordEntry)
     query = _scope_filter(query, user)
     if profile_id is not None:
-        query = query.filter(or_(PasswordEntry.profile_id == profile_id, PasswordEntry.profile_id.is_(None)))
+        query = query.filter(PasswordEntry.profile_id == profile_id)
     if q:
         if search_mode == "smart":
             # Use PostgreSQL full-text search
@@ -260,7 +260,7 @@ def list_groups(
     query = db.query(PasswordEntry)
     query = _scope_filter(query, user)
     if profile_id is not None:
-        query = query.filter(or_(PasswordEntry.profile_id == profile_id, PasswordEntry.profile_id.is_(None)))
+        query = query.filter(PasswordEntry.profile_id == profile_id)
     if q:
         if search_mode == "smart":
             tsquery = func.websearch_to_tsquery('english', q)

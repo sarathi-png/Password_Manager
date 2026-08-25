@@ -932,6 +932,7 @@ function openImportWizard() {
     body.innerHTML = `
       <div class="guide-box" style="font-size:13.5px;color:var(--text-3)">Supports <strong style="color:var(--text-1)">.csv</strong> from Chrome, Edge, Firefox, Bitwarden, 1Password — and <strong style="color:var(--text-1)">.xlsx</strong> spreadsheets. Duplicates are <b>imported and marked</b> (not skipped) — delete via filter if needed.</div>
       <div style="display:flex;gap:10px;margin:12px 0"><select id="wiz-district" class="input" style="flex:1"><option value="">— Assign district (optional)</option>${state.districts.map(d=>`<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("")}</select><select id="wiz-block" class="input" style="flex:1"><option value="">— Assign block (optional)</option>${state.blocks.map(b=>`<option value="${b.id}">${escapeHtml(b.name)}</option>`).join("")}</select></div>
+      <div style="display:flex;gap:10px;margin:12px 0"><select id="wiz-profile" class="input" style="flex:1"><option value="">— Assign profile (optional)</option>${state.profiles.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("")}</select></div>
       <div style="display:flex;gap:10px;margin-bottom:12px"><label style="font-size:13px;display:flex;align-items:center;gap:6px">Dedup mode <select id="wiz-dedup" class="input" style="width:140px"><option value="none">Import all</option><option value="title_url">Title+URL</option><option value="exact">Exact</option></select></label><label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="wiz-skip" /> Skip (old)</label></div>
       <div class="dropzone" id="dropzone">
         <div class="dz-icon">📂</div>
@@ -1002,7 +1003,7 @@ function openImportWizard() {
       const form = new FormData();
       form.append("file", p.file);
       form.append("mapping", JSON.stringify(p.mapping));
-      const did=document.getElementById("wiz-district")?.value; const bid=document.getElementById("wiz-block")?.value; const dedup=document.getElementById("wiz-dedup")?.value||"none"; const skip=document.getElementById("wiz-skip")?.checked; const permit=document.getElementById("wiz-permit")?.checked; if(did) form.append("district_id", did); if(bid) form.append("block_id", bid); form.append("dedup_mode", dedup); form.append("skip_duplicates", skip?"true":"false"); form.append("permit_smart", permit?"true":"false");
+      const did=document.getElementById("wiz-district")?.value; const bid=document.getElementById("wiz-block")?.value; const pid=document.getElementById("wiz-profile")?.value; const dedup=document.getElementById("wiz-dedup")?.value||"none"; const skip=document.getElementById("wiz-skip")?.checked; const permit=document.getElementById("wiz-permit")?.checked; if(did) form.append("district_id", did); if(bid) form.append("block_id", bid); if(pid) form.append("profile_id", pid); form.append("dedup_mode", dedup); form.append("skip_duplicates", skip?"true":"false"); form.append("permit_smart", permit?"true":"false");
       try {
         const res = await api("/api/import/confirm", { method: "POST", body: form });
         closeModal();

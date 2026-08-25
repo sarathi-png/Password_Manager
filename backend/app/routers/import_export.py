@@ -60,6 +60,7 @@ async def confirm_import(
     mapping: str = Form(default="{}"),
     district_id: int | None = Form(default=None),
     block_id: int | None = Form(default=None),
+    profile_id: int | None = Form(default=None),
     skip_duplicates: bool = Form(default=False),
     dedup_mode: str = Form(default="none"),
     permit_smart: bool = Form(default=False),
@@ -119,6 +120,8 @@ async def confirm_import(
         raise HTTPException(status_code=400, detail="District not found")
     if target_block_id is not None and db.get(Block, target_block_id) is None:
         raise HTTPException(status_code=400, detail="Block not found")
+    if profile_id is not None and db.get(Profile, profile_id) is None:
+        raise HTTPException(status_code=400, detail="Profile not found")
 
     def _key_for(row):
         t = row.title.strip().lower()
@@ -208,6 +211,7 @@ async def confirm_import(
                 owner_id=admin.id,
                 district_id=target_district_id,
                 block_id=target_block_id,
+                profile_id=profile_id,
                 is_duplicate=is_duplicate_flag,
                 host=host_val[:255],
                 exact_host=exact_val[:255],

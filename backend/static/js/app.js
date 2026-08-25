@@ -1501,7 +1501,6 @@ async function openManageProfileUsersModal(profileId) {
   document.getElementById("profile-import-file").addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    closeModal();
     toast(`Importing to profile "${profile.name}"…`, "info");
     const form = new FormData();
     form.append("file", file);
@@ -1512,6 +1511,7 @@ async function openManageProfileUsersModal(profileId) {
     form.append("permit_smart", "false");
     try {
       const res = await api("/api/import/confirm", { method: "POST", body: form });
+      closeModal();
       toast(`Imported ${res.imported} to "${profile.name}", skipped ${res.skipped_duplicates} duplicate${res.skipped_duplicates===1?"":"s"}${res.failed?`, ${res.failed} failed`:""}`, res.failed?"info":"success");
       await loadEntries(); if(state.grouped) await loadGroups(); renderVault();
     } catch (ex) { toast(ex.message, "error"); }

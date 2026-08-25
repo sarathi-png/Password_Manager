@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..crypto import decrypt, encrypt, build_search_vector, build_search_vector_plain
 from ..database import get_db
 from ..deps import get_current_user, require_admin
-from ..models import AuditLog, Category, District, Block, PasswordEntry, User
+from ..models import AuditLog, Category, District, Block, PasswordEntry, Profile, User
 from ..schemas import ImportConfirm, ImportPreview, ImportPreviewRow, ImportResult
 from ..services import exporter, importer
 from ..services.smart_categorizer import group_by_registrable, host_group_key_for, propose_smart_groups, registrable_domain

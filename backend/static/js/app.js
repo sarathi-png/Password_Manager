@@ -1467,6 +1467,14 @@ async function openManageProfileUsersModal(profileId) {
   openModal(`
     <div class="modal-head"><div class="modal-title">Users in "${escapeHtml(profile.name)}"</div><button class="modal-close" data-close="1">×</button></div>
     <div class="field">
+      <label>Import passwords to this profile</label>
+      <div style="display:flex;gap:8px">
+        <input type="file" id="profile-import-file" accept=".csv,.xlsx,.xls,.json" style="display:none" />
+        <button class="btn btn-primary" id="profile-import-btn">${ICONS.up} Import file</button>
+        <span style="font-size:12px;color:var(--text-3);align-self:center">CSV, Excel, or JSON</span>
+      </div>
+    </div>
+    <div class="field">
       <label>Add user</label>
       <div style="display:flex;gap:8px">
         <select class="input" id="assign-user-select" style="flex:1">
@@ -1488,6 +1496,25 @@ async function openManageProfileUsersModal(profileId) {
     const uid = document.getElementById("assign-user-select").value;
     try { await api(`/api/profiles/${profileId}/users`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ user_id: Number(uid) }) }); toast("User added", "success"); await loadProfiles(); }
     catch (e) { toast(e.message, "error"); }
+  });
+  document.getElementById("profile-import-btn").addEventListener("click", () => document.getElementById("profile-import-file").click());
+  document.getElementById("profile-import-file").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    closeModal();
+    toast(`Importing to profile "${profile.name}"…`, "info");
+    const form = new FormData();
+    form.append("file", file);
+    form.append("profile_id", profileId);
+    form.append("mapping", "{}");
+    form.append("dedup_mode", "none");
+    form.append("skip_duplicates", "false");
+    form.append("permit_smart", "false");
+    try {
+      const res = await api("/api/import/confirm", { method: "POST", body: form });
+      toast(`Imported ${res.imported} to "${profile.name}", skipped ${res.skipped_duplicates} duplicate${res.skipped_duplicates===1?"":"s"}${res.failed?`, ${res.failed} failed`:""}`, res.failed?"info":"success");
+      await loadEntries(); if(state.grouped) await loadGroups(); renderVault();
+    } catch (ex) { toast(ex.message, "error"); }
   });
   document.getElementById("set-pin-btn").addEventListener("click", async () => {
     const pin = document.getElementById("set-pin-input").value;

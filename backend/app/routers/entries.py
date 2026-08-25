@@ -476,6 +476,20 @@ def bulk_assign(
     return {"updated": updated}
 
 
+@router.post("/bulk-delete", response_model=dict)
+def bulk_delete(
+    entry_ids: list[int],
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if not entry_ids:
+        raise HTTPException(status_code=400, detail="No entries selected")
+    deleted = db.query(PasswordEntry).filter(PasswordEntry.id.in_(entry_ids)).delete(synchronize_session=False)
+    db.commit()
+    _log(db, admin, "entry.bulk_delete", f"{deleted} entries")
+    return {"deleted": deleted}
+
+
 @router.put("/{entry_id}/category", response_model=dict)
 def set_global_category(
     entry_id: int,

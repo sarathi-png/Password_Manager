@@ -433,6 +433,7 @@ function renderVault() {
       <select id="bulk-cat" class="input" style="max-width:180px"><option value="">Category</option>${catFlat().map(c=>`<option value="${c.id}">${escapeHtml(c.name)}${c.parent_id?" (sub)":""}</option>`).join("")}</select>
       <input id="bulk-new-cat" class="input" style="max-width:170px" placeholder="or new category…" />
       <button class="btn btn-primary" id="bulk-assign">Assign</button>
+      <button class="btn btn-ghost" id="bulk-delete" style="color:#F87171">${ICONS.trash} Delete</button>
       <button class="btn btn-ghost" id="bulk-clear">Clear</button>
     </div>
 
@@ -593,7 +594,7 @@ function bindVaultEvents() {
   if(sortSel) sortSel.addEventListener("change", async()=>{ state.filters.sort=sortSel.value; await loadEntries(); refreshCurrentView(); });
   if(clearBtn) clearBtn.addEventListener("click", async()=>{ state.filters={q:"",search_mode:"basic",include_password:false,category:"",district_id:"",block_id:"",is_duplicate:"",tag:"",is_favorite:false,sort:"title"}; await loadEntries(); if(state.grouped) await loadGroups(); renderVault(); });
   const groupedToggle=document.getElementById("grouped-toggle"); if(groupedToggle) groupedToggle.addEventListener("change", async()=>{ state.grouped=groupedToggle.checked; if(state.grouped) await loadGroups(); renderGrouped(); document.getElementById("flat-wrap").style.display=state.grouped?"none":"block"; document.getElementById("grouped-wrap").style.display=state.grouped?"block":"none"; if(!state.grouped) renderEntryRows(); });
-  const bulkDistrict=document.getElementById("bulk-district"); const bulkBlock=document.getElementById("bulk-block"); const bulkCat=document.getElementById("bulk-cat"); const bulkNewCat=document.getElementById("bulk-new-cat"); const bulkAssign=document.getElementById("bulk-assign"); const bulkClear=document.getElementById("bulk-clear"); const selectAll=document.getElementById("select-all");
+  const bulkDistrict=document.getElementById("bulk-district"); const bulkBlock=document.getElementById("bulk-block"); const bulkCat=document.getElementById("bulk-cat"); const bulkNewCat=document.getElementById("bulk-new-cat"); const bulkAssign=document.getElementById("bulk-assign"); const bulkDelete=document.getElementById("bulk-delete"); const bulkClear=document.getElementById("bulk-clear"); const selectAll=document.getElementById("select-all");
   if(bulkAssign) bulkAssign.addEventListener("click", async()=>{
     const ids=[...state.selectedIds]; if(!ids.length) return;
     try{
@@ -611,6 +612,14 @@ function bindVaultEvents() {
       if(!qp.length) return toast("Choose district, block or category","error");
       await api(`/api/entries/bulk-assign?${qp.join("&")}`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(ids)});
       toast(`Assigned ${ids.length} entries`,"success"); state.selectedIds.clear(); await loadEntries(); refreshCurrentView(); document.getElementById("bulk-bar").style.display="none";
+    }catch(e){toast(e.message,"error");}
+  });
+  if(bulkDelete) bulkDelete.addEventListener("click", async()=>{
+    const ids=[...state.selectedIds]; if(!ids.length) return;
+    if(!confirm(`Delete ${ids.length} entries? This cannot be undone.`)) return;
+    try{
+      await api("/api/entries/bulk-delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(ids)});
+      toast(`Deleted ${ids.length} entries`,"success"); state.selectedIds.clear(); await loadEntries(); if(state.grouped) await loadGroups(); renderVault();
     }catch(e){toast(e.message,"error");}
   });
   if(bulkClear) bulkClear.addEventListener("click", ()=>{ state.selectedIds.clear(); renderEntryRows(); document.getElementById("bulk-bar").style.display="none";});

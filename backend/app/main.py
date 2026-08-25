@@ -82,7 +82,22 @@ def _ensure_migrations():
 
         # password_entries search_vector column + GIN index (PostgreSQL only)
         if "password_entries" in insp.get_table_names():
-            _add_column("password_entries", "search_vector", "TSVECTOR")
+            _add_column("password_entries", "search_vector", "TEXT")
+            # Migrate TSVECTOR → TEXT (the column was originally created as TSVECTOR)
+            try:
+                with engine.begin() as conn:
+                    result = conn.execute(text("""
+                        SELECT data_type FROM information_schema.columns
+                        WHERE table_name='password_entries' AND column_name='search_vector'
+                    """))
+                    row = result.fetchone()
+                    if row and row[0] == "tsvector":
+                        # Drop GIN index first (it requires tsvector type)
+                        conn.execute(text("DROP INDEX IF EXISTS ix_password_entries_search_vector"))
+                        conn.execute(text("ALTER TABLE password_entries ALTER COLUMN search_vector TYPE TEXT"))
+                        logger.info("Migrated search_vector column from tsvector to text")
+            except Exception:
+                logger.debug("search_vector type migration skipped (likely already text or SQLite)")
             # Create GIN index for full-text search (PostgreSQL only)
             try:
                 with engine.begin() as conn:
@@ -93,7 +108,7 @@ def _ensure_migrations():
                     if not result.fetchone():
                         conn.execute(text("""
                             CREATE INDEX ix_password_entries_search_vector 
-                            ON password_entries USING GIN (search_vector)
+                            ON password_entries USING GIN (to_tsvector('english', COALESCE(search_vector, '')))
                         """))
                         logger.info("Created GIN index on password_entries.search_vector")
             except Exception:

@@ -41,7 +41,7 @@ def _fill_counts(nodes: list[CategoryOut], counts: dict[int, int]) -> None:
 
 @router.get("", response_model=list[CategoryOut])
 def list_categories(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    cats = db.query(Category).order_by(Category.name).all()
+    cats = db.query(Category).order_by(Category.sort_order, Category.name).all()
     tree = _to_tree(cats)
     _fill_counts(tree, _entry_counts(db))
     return tree
@@ -55,7 +55,10 @@ def create_category(body: CategoryCreate, admin: User = Depends(require_admin), 
     q = db.query(Category).filter(Category.name == body.name.strip(), Category.parent_id == body.parent_id).first()
     if q:
         raise HTTPException(status_code=409, detail="Category already exists under this parent")
-    cat = Category(name=body.name.strip(), slug=body.name.strip().lower().replace(" ", "-"), parent_id=body.parent_id, is_system=False)
+    # assign sort_order: after all existing custom categories (sort_order >= 100)
+    max_custom = db.query(Category.sort_order).filter(Category.sort_order >= 100).order_by(Category.sort_order.desc()).first()
+    next_sort = (max_custom[0] + 1) if max_custom and max_custom[0] else 100
+    cat = Category(name=body.name.strip(), slug=body.name.strip().lower().replace(" ", "-"), parent_id=body.parent_id, is_system=False, sort_order=next_sort)
     db.add(cat)
     db.commit()
     db.refresh(cat)

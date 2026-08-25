@@ -120,11 +120,20 @@ function hostOf(url) {
   try { return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, ""); } catch { return url || "—"; }
 }
 
-const CATEGORIES = ["email", "banking", "social", "shopping", "work", "entertainment", "other"];
-const CATEGORY_PILL = { email: "cyan", banking: "amber", social: "violet", shopping: "green", work: "violet", entertainment: "cyan", other: "gray" };
+// Category pill colors (by slug/name) — fallback to gray
+const CATEGORY_PILL_COLORS = {
+  email: "cyan", banking: "amber", social: "violet", shopping: "green",
+  work: "violet", entertainment: "cyan", other: "gray",
+  education: "blue", finance: "amber", government: "red", health: "red", travel: "orange"
+};
+
+function pillColorFor(cat) {
+  const key = String(cat || "").toLowerCase().replace(/\s+/g, "-");
+  return CATEGORY_PILL_COLORS[key] || "gray";
+}
 
 function pillFor(cat) {
-  const cls = CATEGORY_PILL[cat] || "gray";
+  const cls = pillColorFor(cat);
   return `<span class="pill ${cls}">${escapeHtml(cat)}</span>`;
 }
 
@@ -362,7 +371,7 @@ function renderVault() {
     <div style="display:flex;gap:10px;margin-bottom:12px"><label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="grouped-toggle" ${state.grouped?"checked":""}/> Grouped by host (collapse duplicates)</label><span style="font-size:12px;color:var(--text-3)">registrable domain merges subdomains — admin can Split</span></div>
     <div class="chip-row">
       <button class="chip ${!state.filters.category ? "active" : ""}" data-cat="">All</button>
-      ${CATEGORIES.map((c) => `<button class="chip ${state.filters.category === c ? "active" : ""}" data-cat="${c}">${c}</button>`).join("")}
+      ${state.categories.flatMap(c => [c, ...(c.children || [])]).map(c => `<button class="chip ${state.filters.category === c.name ? "active" : ""}" data-cat="${escapeHtml(c.name)}">${escapeHtml(c.name)}</button>`).join("")}
     </div>
 
     <div id="grouped-wrap" style="display:${state.grouped?"block":"none"}"></div>
@@ -630,7 +639,7 @@ function openEntryForm(entryId = null) {
       <div class="form-row">
         <div class="field"><label>Username</label><input class="input" id="f-username" value="${escapeHtml(existing?.username || "")}" /></div>
         <div class="field"><label>Category (legacy)</label>
-          <select class="input" id="f-category">${CATEGORIES.map((c) => `<option value="${c}" ${existing?.category === c ? "selected" : ""}>${c}</option>`).join("")}</select>
+          <select class="input" id="f-category"><option value="">— None</option>${state.categories.flatMap(c => [c, ...(c.children || [])]).map(c => `<option value="${escapeHtml(c.name)}" ${existing?.category === c.name ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}</select>
         </div>
         <div class="field"><label>Smart category (global, admin)</label><select class="input" id="f-smart-cat"><option value="">— None</option>${state.categories.map(c=>`<option value="${c.id}" ${existing?.smart_category_id===c.id?"selected":""}>${escapeHtml(c.name)}</option>`).join("")}${state.categories.flatMap(c=> c.children||[]).map(sc=>`<option value="${sc.id}" ${existing?.smart_subcategory_id===sc.id?"selected":""}>↳ ${escapeHtml(sc.name)}</option>`).join("")}</select></div>
       </div>

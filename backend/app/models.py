@@ -59,6 +59,7 @@ class Category(Base):
     slug: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=999, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     parent: Mapped["Category | None"] = relationship(back_populates="children", remote_side="Category.id")

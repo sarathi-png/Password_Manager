@@ -63,6 +63,23 @@ def _ensure_migrations():
             ]:
                 _add_column("password_entries", col, typ)
 
+        # categories sort_order column
+        if "categories" in insp.get_table_names():
+            _add_column("categories", "sort_order", "INTEGER NOT NULL DEFAULT 999")
+            # update existing system categories with correct sort_order
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("""
+                        UPDATE categories SET sort_order = CASE name
+                            WHEN 'Email' THEN 1 WHEN 'Banking' THEN 2 WHEN 'Social' THEN 3
+                            WHEN 'Shopping' THEN 4 WHEN 'Work' THEN 5 WHEN 'Entertainment' THEN 6
+                            WHEN 'Other' THEN 7 ELSE sort_order END
+                        WHERE is_system = true
+                    """))
+                logger.info("Updated sort_order for system categories")
+            except Exception:
+                logger.exception("Failed to update sort_order for system categories")
+
         try:
             with engine.begin() as conn:
                 conn.execute(text("UPDATE password_entries SET is_duplicate = FALSE WHERE is_duplicate IS NULL"))
@@ -89,19 +106,15 @@ def _ensure_migrations():
         from .models import Category
         with SessionLocal() as db:
             if db.query(Category).count() == 0:
-                seed = [
-                    ("Education", None), ("Finance", None), ("Work", None), ("Government", None),
-                    ("Health", None), ("Shopping", None), ("Social", None), ("Other", None),
+                # System categories in the desired display order (matching frontend CATEGORIES)
+                # sort_order: Email=1, Banking=2, Social=3, Shopping=4, Work=5, Entertainment=6, Other=7
+                system_cats = [
+                    ("Email", 1), ("Banking", 2), ("Social", 3), ("Shopping", 4),
+                    ("Work", 5), ("Entertainment", 6), ("Other", 7),
                 ]
-                for name, parent in seed:
-                    db.add(Category(name=name, slug=name.lower(), parent_id=None, is_system=True))
+                for name, sort_order in system_cats:
+                    db.add(Category(name=name, slug=name.lower(), parent_id=None, is_system=True, sort_order=sort_order))
                 db.commit()
-                # add LokOS as subcategory of Education for demo
-                edu = db.query(Category).filter(Category.name == "Education").first()
-                if edu:
-                    db.add(Category(name="LokOS", slug="lokos", parent_id=edu.id, is_system=True))
-                    db.add(Category(name="LokOS-School", slug="lokos-school", parent_id=edu.id, is_system=True))
-                    db.commit()
     except Exception:
         logger.exception("Category seeding failed")
 

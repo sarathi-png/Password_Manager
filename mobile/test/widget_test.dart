@@ -46,7 +46,8 @@ void main() {
   });
 
   test('category colors cover all categories', () {
-    for (final c in kCategories) {
+    const testCategories = ['email', 'banking', 'social', 'shopping', 'work', 'entertainment', 'other'];
+    for (final c in testCategories) {
       expect(categoryColor(c), isNotNull);
     }
   });

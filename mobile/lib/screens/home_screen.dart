@@ -21,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _searchCtrl = TextEditingController();
   final _tagCtrl = TextEditingController();
   List<VaultEntry> _entries = [];
+  List<Map<String, dynamic>> _categories = []; // API-fetched categories
   bool _loading = true;
   String? _error;
   String _category = '';
@@ -52,6 +53,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _error = null;
     });
     try {
+      // Fetch categories if not already loaded
+      if (_categories.isEmpty) {
+        _categories = await widget.api.listCategories();
+      }
       final entries = await widget.api.listEntries(
         query: _searchCtrl.text.trim(),
         category: _category,
@@ -355,8 +360,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   children: [
                     _CategoryChip(label: 'All', selected: _category.isEmpty, onTap: () => _selectCategory('')),
-                    for (final c in kCategories)
-                      _CategoryChip(label: c, selected: _category == c, onTap: () => _selectCategory(c)),
+                    // Flatten categories (including subcategories) for filter chips
+                    for (final c in _categories)
+                      for (final cat in [c, ...(c['children'] as List? ?? [])])
+                        _CategoryChip(label: cat['name'] as String, selected: _category == cat['name'], onTap: () => _selectCategory(cat['name'] as String)),
                   ],
                 ),
               ),

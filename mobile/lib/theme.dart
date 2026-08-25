@@ -148,18 +148,8 @@ class AppTheme {
   }
 }
 
-const List<String> kCategories = [
-  'email',
-  'banking',
-  'social',
-  'shopping',
-  'work',
-  'entertainment',
-  'other',
-];
-
 Color categoryColor(String category) {
-  switch (category) {
+  switch (category.toLowerCase()) {
     case 'email':
       return AppColors.accent2;
     case 'banking':
@@ -172,7 +162,12 @@ Color categoryColor(String category) {
       return AppColors.accent1;
     case 'entertainment':
       return AppColors.accent2;
-    default:
+    case 'other':
       return AppColors.text3;
+    default:
+      // Generate a consistent color from the category name hash
+      final hash = category.toLowerCase().codeUnits.fold(0, (a, b) => a + b);
+      final colors = [AppColors.accent1, AppColors.accent2, AppColors.warning, AppColors.success, AppColors.accent1, AppColors.accent2];
+      return colors[hash % colors.length];
   }
 }

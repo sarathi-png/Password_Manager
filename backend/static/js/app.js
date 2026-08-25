@@ -14,7 +14,7 @@ const state = {
   grouped: true,
   groups: [],
   selectedIds: new Set(),
-  filters: { q: "", category: "", district_id: "", block_id: "", is_duplicate: "", tag: "", is_favorite: false, sort: "title", search_mode: "basic", include_password: false },
+  filters: { q: "", category: "", district_id: "", block_id: "", is_duplicate: "", tag: "", is_favorite: false, sort: "title", search_mode: "basic", include_password: false, profile_id: "" },
   searchTimer: null,
 };
 
@@ -420,6 +420,7 @@ function renderVault() {
       <button class="btn btn-ghost" id="add-btn">${ICONS.plus} New entry</button>
     </div>
     <div class="toolbar" style="margin-top:10px">
+      <select id="filter-profile" class="input" style="max-width:160px"><option value="">All profiles</option>${state.profiles.map(p=>`<option value="${p.id}" ${state.filters.profile_id==p.id?"selected":""}>${escapeHtml(p.name)}</option>`).join("")}</select>
       <select id="filter-district" class="input" style="max-width:160px"><option value="">All districts</option>${state.districts.map(d=>`<option value="${d.id}" ${state.filters.district_id==d.id?"selected":""}>${escapeHtml(d.name)}</option>`).join("")}</select>
       <select id="filter-block" class="input" style="max-width:160px"><option value="">All blocks</option>${state.blocks.filter(b=>!state.filters.district_id || b.district_id==state.filters.district_id).map(b=>`<option value="${b.id}" ${state.filters.block_id==b.id?"selected":""}>${escapeHtml(b.name)}</option>`).join("")}</select>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="filter-dup" ${state.filters.is_duplicate?"checked":""}/> Duplicates</label>
@@ -571,6 +572,7 @@ function renderEntryRows() {
 function bindVaultEvents() {
   const search = document.getElementById("search");
   const tagSearch = document.getElementById("tag-search");
+  const profileSel = document.getElementById("filter-profile");
   const districtSel = document.getElementById("filter-district");
   const blockSel = document.getElementById("filter-block");
   const dupChk = document.getElementById("filter-dup");
@@ -589,12 +591,13 @@ function bindVaultEvents() {
     refreshCurrentView();
   });
   if(tagSearch) tagSearch.addEventListener("input", debounce(async()=>{ state.filters.tag=tagSearch.value.trim(); await loadEntries(); refreshCurrentView();},300));
+  if(profileSel) profileSel.addEventListener("change", async()=>{ state.filters.profile_id=profileSel.value; await loadEntries(); if(state.grouped) await loadGroups(); renderVault(); });
   if(districtSel) districtSel.addEventListener("change", async()=>{ state.filters.district_id=districtSel.value; state.filters.block_id=""; await loadEntries(); renderVault(); });
   if(blockSel) blockSel.addEventListener("change", async()=>{ state.filters.block_id=blockSel.value; await loadEntries(); refreshCurrentView(); });
   if(dupChk) dupChk.addEventListener("change", async()=>{ state.filters.is_duplicate=dupChk.checked?"true":""; await loadEntries(); refreshCurrentView(); });
   if(favChk) favChk.addEventListener("change", async()=>{ state.filters.is_favorite=favChk.checked; await loadEntries(); refreshCurrentView(); });
   if(sortSel) sortSel.addEventListener("change", async()=>{ state.filters.sort=sortSel.value; await loadEntries(); refreshCurrentView(); });
-  if(clearBtn) clearBtn.addEventListener("click", async()=>{ state.filters={q:"",search_mode:"basic",include_password:false,category:"",district_id:"",block_id:"",is_duplicate:"",tag:"",is_favorite:false,sort:"title"}; await loadEntries(); if(state.grouped) await loadGroups(); renderVault(); });
+  if(clearBtn) clearBtn.addEventListener("click", async()=>{ state.filters={q:"",search_mode:"basic",include_password:false,category:"",district_id:"",block_id:"",is_duplicate:"",tag:"",is_favorite:false,sort:"title",profile_id:""}; await loadEntries(); if(state.grouped) await loadGroups(); renderVault(); });
   const groupedToggle=document.getElementById("grouped-toggle"); if(groupedToggle) groupedToggle.addEventListener("change", async()=>{ state.grouped=groupedToggle.checked; if(state.grouped) await loadGroups(); renderGrouped(); document.getElementById("flat-wrap").style.display=state.grouped?"none":"block"; document.getElementById("grouped-wrap").style.display=state.grouped?"block":"none"; if(!state.grouped) renderEntryRows(); });
   const bulkDistrict=document.getElementById("bulk-district"); const bulkBlock=document.getElementById("bulk-block"); const bulkCat=document.getElementById("bulk-cat"); const bulkNewCat=document.getElementById("bulk-new-cat"); const bulkAssign=document.getElementById("bulk-assign"); const bulkProfile=document.getElementById("bulk-profile"); const bulkDelete=document.getElementById("bulk-delete"); const bulkClear=document.getElementById("bulk-clear"); const selectAll=document.getElementById("select-all");
   if(bulkAssign) bulkAssign.addEventListener("click", async()=>{
@@ -1057,7 +1060,8 @@ async function loadGroups() {
     if (state.filters.is_duplicate) params.set("is_duplicate", state.filters.is_duplicate);
     if (state.filters.tag) params.set("tag", state.filters.tag);
     if (state.filters.is_favorite) params.set("is_favorite", "true");
-    if (state.currentProfileId) params.set("profile_id", state.currentProfileId);
+  if (state.currentProfileId) params.set("profile_id", state.currentProfileId);
+  else if (state.filters.profile_id) params.set("profile_id", state.filters.profile_id);
     state.groups = await api(`/api/entries/groups?${params}`);
   } catch(e){ state.groups=[]; }
 }
@@ -1511,9 +1515,20 @@ async function openManageProfileUsersModal(profileId) {
     form.append("permit_smart", "false");
     try {
       const res = await api("/api/import/confirm", { method: "POST", body: form });
-      closeModal();
       toast(`Imported ${res.imported} to "${profile.name}", skipped ${res.skipped_duplicates} duplicate${res.skipped_duplicates===1?"":"s"}${res.failed?`, ${res.failed} failed`:""}`, res.failed?"info":"success");
       await loadEntries(); if(state.grouped) await loadGroups(); renderVault();
+      const modalEl = document.querySelector(".modal");
+      if (modalEl) {
+        modalEl.innerHTML = `
+          <div style="text-align:center;padding:20px 0">
+            <div style="font-size:36px;margin-bottom:12px">${ICONS.check}</div>
+            <div style="font-weight:600;font-size:15px;margin-bottom:6px">Import complete</div>
+            <div style="color:var(--text-2);font-size:13px;margin-bottom:16px">
+              ${res.imported} passwords imported to "${escapeHtml(profile.name)}"${res.skipped_duplicates ? `<br>${res.skipped_duplicates} duplicate${res.skipped_duplicates===1?"":"s"} skipped` : ""}${res.failed ? `<br>${res.failed} row${res.failed===1?"":"s"} failed` : ""}
+            </div>
+            <button class="btn btn-primary" data-close="1">Close</button>
+          </div>`;
+      }
     } catch (ex) { toast(ex.message, "error"); }
   });
   document.getElementById("set-pin-btn").addEventListener("click", async () => {

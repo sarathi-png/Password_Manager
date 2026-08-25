@@ -1358,13 +1358,13 @@ function selectProfileInSpa(profile) {
         state.currentProfileId = profile.id;
         localStorage.setItem("vault_profile_id", profile.id);
         closeModal();
-        location.hash = "#/vault";
+        if (location.hash === "#/vault") router(); else location.hash = "#/vault";
       } catch (e) { toast("Invalid PIN", "error"); }
     });
   } else {
     state.currentProfileId = profile.id;
     localStorage.setItem("vault_profile_id", profile.id);
-    location.hash = "#/vault";
+    if (location.hash === "#/vault") router(); else location.hash = "#/vault";
   }
 }
 
@@ -1479,10 +1479,10 @@ async function router() {
 
   if (!state.user || state.user.role !== "admin") return renderLogin();
 
-  // Load profiles and check if profile is needed
+  // Load profiles and check if profile is needed (skip for admin)
   if (!route.startsWith("/profiles")) {
     await loadProfiles();
-    if (state.profiles.length > 0 && !state.currentProfileId) {
+    if (state.profiles.length > 0 && !state.currentProfileId && state.user.role !== "admin") {
       return renderProfileSelector();
     }
   }

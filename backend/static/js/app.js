@@ -9,10 +9,12 @@ const state = {
   districts: [],
   blocks: [],
   categories: [],
+  profiles: [],
+  currentProfileId: localStorage.getItem("vault_profile_id") ? Number(localStorage.getItem("vault_profile_id")) : null,
   grouped: true,
   groups: [],
   selectedIds: new Set(),
-  filters: { q: "", category: "", district_id: "", block_id: "", is_duplicate: "", tag: "", is_favorite: false, sort: "title" },
+  filters: { q: "", category: "", district_id: "", block_id: "", is_duplicate: "", tag: "", is_favorite: false, sort: "title", search_mode: "basic", include_password: false },
   searchTimer: null,
 };
 
@@ -82,6 +84,7 @@ const ICONS = {
   log: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3"/><path d="M8 20H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
   box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>',
   tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>',
+  profile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>',
 };
 
 /* ---------------- Utils ---------------- */
@@ -247,6 +250,7 @@ function shell(title, subtitle, content, activeNav) {
           <div class="brand-name">Vault</div>
         </div>
         <button class="nav-item ${activeNav === "vault" ? "active" : ""}" data-nav="vault">${ICONS.vault}<span>Vault</span></button>
+        <button class="nav-item ${activeNav === "profiles" ? "active" : ""}" data-nav="profiles">${ICONS.profile}<span>Profiles</span></button>
         <button class="nav-item ${activeNav === "users" ? "active" : ""}" data-nav="users">${ICONS.users}<span>Users</span></button>
         <button class="nav-item ${activeNav === "audit" ? "active" : ""}" data-nav="audit">${ICONS.log}<span>Audit log</span></button>
         <button class="nav-item ${activeNav === "districts" ? "active" : ""}" data-nav="districts">${ICONS.box}<span>Districts</span></button>
@@ -295,11 +299,13 @@ function logout(silent = true) {
 async function openSettingsModal() {
   try {
     const user = await api("/api/auth/me");
+    const currentProfile = state.profiles.find((p) => p.id === state.currentProfileId);
     openModal(`
       <div class="modal-head">
         <div class="modal-title">Settings</div>
         <button class="modal-close" data-close="1">×</button>
       </div>
+      ${currentProfile ? `<div class="field"><label>Current profile</label><div style="display:flex;align-items:center;gap:8px"><span style="font-weight:600">${escapeHtml(currentProfile.name)}</span><button class="btn btn-ghost" id="switch-profile-btn">Switch</button></div></div>` : ""}
       <div class="field">
         <label style="display:flex;align-items:center;gap:8px;font-weight:normal">
           <input type="checkbox" id="search-include-password" ${user.search_include_password ? "checked" : ""} />
@@ -328,6 +334,8 @@ async function openSettingsModal() {
         toast(ex.message, "error");
       }
     });
+    const switchBtn = document.getElementById("switch-profile-btn");
+    if (switchBtn) switchBtn.addEventListener("click", () => { state.currentProfileId = null; localStorage.removeItem("vault_profile_id"); closeModal(); location.hash = "#/profiles"; });
   } catch (ex) {
     toast(ex.message, "error");
   }
@@ -347,6 +355,7 @@ async function loadEntries() {
   if (state.filters.tag) params.set("tag", state.filters.tag);
   if (state.filters.is_favorite) params.set("is_favorite", "true");
   if (state.filters.sort && state.filters.sort !== "title") params.set("sort", state.filters.sort);
+  if (state.currentProfileId) params.set("profile_id", state.currentProfileId);
   try {
     state.entries = await api(`/api/entries?${params}`);
   } catch (e) {
@@ -1000,6 +1009,7 @@ async function loadGroups() {
     if (state.filters.q) params.set("q", state.filters.q);
     if (state.filters.district_id) params.set("district_id", state.filters.district_id);
     if (state.filters.block_id) params.set("block_id", state.filters.block_id);
+    if (state.currentProfileId) params.set("profile_id", state.currentProfileId);
     state.groups = await api(`/api/entries/groups?${params}`);
   } catch(e){ state.groups=[]; }
 }
@@ -1278,6 +1288,167 @@ function openCategoryCreateModal(onDone) {
   });
 }
 
+/* ---------------- Profile selector ---------------- */
+
+async function loadProfiles() {
+  try { state.profiles = await api("/api/profiles"); } catch (e) { state.profiles = []; }
+}
+
+function renderProfileSelector() {
+  document.getElementById("app").innerHTML = `
+    <div class="login-shell">
+      <div class="login-card" style="max-width:520px">
+        <div class="login-brand">
+          <div class="brand-mark">◆</div>
+          <div>
+            <div class="login-title">Who's watching?</div>
+            <div class="login-sub">Select a profile to continue</div>
+          </div>
+        </div>
+        <div id="profile-grid" class="profile-grid">
+          ${state.profiles.length === 0 ? '<div style="text-align:center;padding:24px 0;color:var(--text-3)">No profiles yet. Create one to get started.</div>' : ""}
+        </div>
+        <button class="btn btn-ghost btn-lg" id="create-profile-btn" style="width:100%;justify-content:center;margin-top:12px">${ICONS.plus} New profile</button>
+      </div>
+    </div>`;
+
+  const grid = document.getElementById("profile-grid");
+  state.profiles.forEach((p) => {
+    const card = document.createElement("div");
+    card.className = "profile-card";
+    card.innerHTML = `
+      <div class="profile-avatar">${p.avatar_url ? `<img src="${escapeHtml(p.avatar_url)}" alt="" />` : ICONS.profile}</div>
+      <div class="profile-name">${escapeHtml(p.name)}</div>
+      ${p.has_pin ? '<div class="profile-lock">🔒</div>' : ""}`;
+    card.addEventListener("click", () => selectProfileInSpa(p));
+    grid.appendChild(card);
+  });
+
+  document.getElementById("create-profile-btn").addEventListener("click", () => openCreateProfileModal(async () => {
+    await loadProfiles();
+    renderProfileSelector();
+  }));
+}
+
+function selectProfileInSpa(profile) {
+  if (profile.has_pin) {
+    openModal(`
+      <div class="modal-head"><div class="modal-title">Enter PIN</div><button class="modal-close" data-close="1">×</button></div>
+      <div class="field"><label>PIN for ${escapeHtml(profile.name)}</label><input class="input" id="profile-pin" type="password" inputmode="numeric" placeholder="PIN" /></div>
+      <div class="modal-foot"><button class="btn btn-ghost" data-close="1">Cancel</button><button class="btn btn-primary" id="profile-pin-ok">OK</button></div>
+    `);
+    document.getElementById("profile-pin-ok").addEventListener("click", async () => {
+      const pin = document.getElementById("profile-pin").value;
+      try {
+        await api(`/api/profiles/${profile.id}/select`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ pin }) });
+        state.currentProfileId = profile.id;
+        localStorage.setItem("vault_profile_id", profile.id);
+        closeModal();
+        location.hash = "#/vault";
+      } catch (e) { toast("Invalid PIN", "error"); }
+    });
+  } else {
+    state.currentProfileId = profile.id;
+    localStorage.setItem("vault_profile_id", profile.id);
+    location.hash = "#/vault";
+  }
+}
+
+function openCreateProfileModal(onDone) {
+  openModal(`
+    <div class="modal-head"><div class="modal-title">New profile</div><button class="modal-close" data-close="1">×</button></div>
+    <div class="field"><label>Name</label><input class="input" id="new-profile-name" placeholder="e.g. Personal" /></div>
+    <div class="modal-foot"><button class="btn btn-ghost" data-close="1">Cancel</button><button class="btn btn-primary" id="new-profile-save">Create</button></div>
+  `);
+  document.getElementById("new-profile-save").addEventListener("click", async () => {
+    const name = document.getElementById("new-profile-name").value.trim();
+    if (!name) return toast("Enter a name", "error");
+    try {
+      await api("/api/profiles", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ name }) });
+      toast("Profile created", "success"); closeModal();
+      if (onDone) await onDone();
+    } catch (e) { toast(e.message, "error"); }
+  });
+}
+
+/* ---------------- Profiles management view ---------------- */
+
+function renderProfiles() {
+  document.getElementById("app").innerHTML = shell(
+    "Profiles",
+    "Manage profile access for your team.",
+    `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <button class="btn btn-primary" id="add-profile">${ICONS.plus} New profile</button>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="profiles-table">
+        <thead><tr><th>Name</th><th>Users</th><th>PIN</th><th></th></tr></thead>
+        <tbody id="profiles-body"></tbody>
+      </table>
+    </div>
+    `,
+    "profiles"
+  );
+  bindShell();
+  const body = document.getElementById("profiles-body");
+  body.innerHTML = state.profiles.map((p) => `
+    <tr>
+      <td style="font-weight:600">${escapeHtml(p.name)}</td>
+      <td>${p.user_count}</td>
+      <td>${p.has_pin ? '<span class="pill amber">set</span>' : '<span class="pill gray">none</span>'}</td>
+      <td><div class="cell-actions">
+        <button class="mini-btn" data-manage-users="${p.id}" title="Manage users">${ICONS.users}</button>
+        <button class="mini-btn" data-del-profile="${p.id}" title="Delete">${ICONS.trash}</button>
+      </div></td>
+    </tr>`).join("") || '<tr><td colspan="4">No profiles yet</td></tr>';
+
+  body.querySelectorAll("[data-manage-users]").forEach((b) => b.addEventListener("click", () => openManageProfileUsersModal(Number(b.dataset.manageUsers))));
+  body.querySelectorAll("[data-del-profile]").forEach((b) => b.addEventListener("click", async () => {
+    try { await api(`/api/profiles/${b.dataset.delProfile}`, { method: "DELETE" }); toast("Profile deleted", "success"); await loadProfiles(); renderProfiles(); }
+    catch (e) { toast(e.message, "error"); }
+  }));
+  document.getElementById("add-profile").addEventListener("click", () => openCreateProfileModal(async () => { await loadProfiles(); renderProfiles(); }));
+}
+
+async function openManageProfileUsersModal(profileId) {
+  const profile = state.profiles.find((p) => p.id === profileId);
+  if (!profile) return;
+  // Load all users for the assign dropdown
+  const allUsers = state.users || [];
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Users in "${escapeHtml(profile.name)}"</div><button class="modal-close" data-close="1">×</button></div>
+    <div class="field">
+      <label>Add user</label>
+      <div style="display:flex;gap:8px">
+        <select class="input" id="assign-user-select" style="flex:1">
+          ${allUsers.map((u) => `<option value="${u.id}">${escapeHtml(u.username)} (${u.role})</option>`).join("")}
+        </select>
+        <button class="btn btn-primary" id="assign-user-btn">Add</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Set PIN for yourself on this profile</label>
+      <div style="display:flex;gap:8px">
+        <input class="input" id="set-pin-input" type="password" inputmode="numeric" placeholder="4-8 digit PIN" style="flex:1" />
+        <button class="btn btn-ghost" id="set-pin-btn">Set PIN</button>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" data-close="1">Done</button></div>
+  `);
+  document.getElementById("assign-user-btn").addEventListener("click", async () => {
+    const uid = document.getElementById("assign-user-select").value;
+    try { await api(`/api/profiles/${profileId}/users`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ user_id: Number(uid) }) }); toast("User added", "success"); await loadProfiles(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+  document.getElementById("set-pin-btn").addEventListener("click", async () => {
+    const pin = document.getElementById("set-pin-input").value;
+    if (!pin || pin.length < 4) return toast("PIN must be 4-8 digits", "error");
+    try { await api(`/api/profiles/${profileId}/pin`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ pin }) }); toast("PIN set", "success"); await loadProfiles(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+
 /* ---------------- Router ---------------- */
 
 async function router() {
@@ -1294,6 +1465,14 @@ async function router() {
 
   if (!state.user || state.user.role !== "admin") return renderLogin();
 
+  // Load profiles and check if profile is needed
+  if (!route.startsWith("/profiles")) {
+    await loadProfiles();
+    if (state.profiles.length > 0 && !state.currentProfileId) {
+      return renderProfileSelector();
+    }
+  }
+
   if (route.startsWith("/vault")) {
     await Promise.allSettled([loadDistricts(), loadBlocks(), loadCategories()]);
     await loadEntries();
@@ -1305,6 +1484,9 @@ async function router() {
       console.error("renderVault failed", e);
       document.getElementById("app").innerHTML = `<div style="padding:32px"><h3>Vault failed to load</h3><p>${escapeHtml(e.message)}</p><p><a href="#/login" class="btn btn-primary">Back to login</a></p></div>`;
     }
+  } else if (route.startsWith("/profiles")) {
+    await Promise.all([loadProfiles(), loadUsers()]);
+    renderProfiles();
   } else if (route.startsWith("/users")) {
     await Promise.all([loadUsers(), loadAudit()]);
     renderUsers();

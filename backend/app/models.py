@@ -82,6 +82,35 @@ class Category(Base):
     children: Mapped[list["Category"]] = relationship(back_populates="parent", cascade="all, delete-orphan")
 
 
+class Profile(Base):
+    """Netflix-style profile: groups users and entries together."""
+    __tablename__ = "profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    avatar_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    created_by: Mapped[User | None] = relationship()
+    users: Mapped[list["UserProfile"]] = relationship(back_populates="profile", cascade="all, delete-orphan")
+    entries: Mapped[list["PasswordEntry"]] = relationship(back_populates="profile", cascade="all, delete-orphan")
+
+
+class UserProfile(Base):
+    """Join table: which users can access which profiles, with per-profile PIN."""
+    __tablename__ = "user_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    pin_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+    user: Mapped[User] = relationship()
+    profile: Mapped[Profile] = relationship(back_populates="users")
+
+
 class PasswordEntry(Base):
     __tablename__ = "password_entries"
 
@@ -179,32 +208,3 @@ class AuditLog(Base):
     target: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     detail: Mapped[str] = mapped_column(String(1024), nullable=False, default="")
     ip: Mapped[str] = mapped_column(String(64), nullable=False, default="")
-
-
-class Profile(Base):
-    """Netflix-style profile: groups users and entries together."""
-    __tablename__ = "profiles"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
-    avatar_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
-    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-
-    created_by: Mapped[User | None] = relationship()
-    users: Mapped[list["UserProfile"]] = relationship(back_populates="profile", cascade="all, delete-orphan")
-    entries: Mapped[list["PasswordEntry"]] = relationship(back_populates="profile", cascade="all, delete-orphan")
-
-
-class UserProfile(Base):
-    """Join table: which users can access which profiles, with per-profile PIN."""
-    __tablename__ = "user_profiles"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
-    pin_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-
-    user: Mapped[User] = relationship()
-    profile: Mapped[Profile] = relationship(back_populates="users")

@@ -180,7 +180,7 @@ def list_entries(
 ):
     query = db.query(PasswordEntry)
     query = _scope_filter(query, user)
-    if profile_id is not None:
+    if profile_id is not None and user.role != "admin":
         query = query.filter(PasswordEntry.profile_id == profile_id)
     if q:
         if search_mode == "smart":
@@ -259,7 +259,7 @@ def list_groups(
     # collapsed by registrable_domain, respects scope and effective category
     query = db.query(PasswordEntry)
     query = _scope_filter(query, user)
-    if profile_id is not None:
+    if profile_id is not None and user.role != "admin":
         query = query.filter(PasswordEntry.profile_id == profile_id)
     if q:
         if search_mode == "smart":
